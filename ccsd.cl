@@ -18,18 +18,15 @@
   `(cdr ,x))
 ;;; commutator : p q^\dagger + q^\dagger p = \delta_{pq}
 
-;;; A node: factor * type_index = (type index factor)
-;;; e.g. -1a_i^\dagger = (h- i -1)
 ;;; type:
-;;; h+   ->-|
-;;; p+   -<-|
-;;; h-   |->-
-;;; p-   |-<-
+;;; h+   ->-|   '(+ ? ?)
+;;; p+   -<-|   '(? + ?)
+;;; h-   |->-   '(- ? ?)
+;;; p-   |-<-   '(? - ?)
 ;;; kr   Kronecker delta
 ;;;
-;;; (t_{ijkl}^{abcd} ijkl abcd)
-;;; As : list of nodes
-;;; '((h+ 1) (p+ 1) (h+ 2) (p+ 2) (h+ 3) (p+ 3))
+;;; (t_{ijk}^{abc} (i a 1) (j b 2) (k c 3))
+
 (defun make-pair-op (hole particle ind)
   (list hole particle ind))
 (defun hole-of (a)
@@ -86,13 +83,12 @@
   (let ((last-pair '()))
     (flet ((commute (pair-op)
              (let ((this-pair (op-w/o-index pair-op)))
-               (if (or (numberp (hole-of pair-op))
-                       (equal last-pair this-pair))
-                   nil
-                   (progn (setq last-pair this-pair)
-                          (make-pair-op hole-ind
-                                        (particle-of pair-op)
-                                        (index-of pair-op)))))))
+               (unless (or (numberp (hole-of pair-op))
+                           (equal last-pair this-pair))
+                 (setq last-pair this-pair)
+                 (make-pair-op hole-ind
+                               (particle-of pair-op)
+                               (index-of pair-op))))))
       (mapcar (lambda (ops)
                 (attach-tag 't ops))
               (mapreplace #'commute (content-of amp))))))
@@ -100,90 +96,124 @@
   (let ((last-pair '()))
     (flet ((commute (pair-op)
              (let ((this-pair (op-w/o-index pair-op)))
-               (if (or (numberp (particle-of pair-op))
-                       (equal last-pair this-pair))
-                   nil
-                   (progn (setq last-pair this-pair)
-                          (make-pair-op (hole-of pair-op)
-                                        particle-ind
-                                        (index-of pair-op)))))))
+               (unless (or (numberp (particle-of pair-op))
+                           (equal last-pair this-pair))
+                 (setq last-pair this-pair)
+                 (make-pair-op (hole-of pair-op)
+                               particle-ind
+                               (index-of pair-op))))))
       (mapcar (lambda (ops)
                 (attach-tag 't ops))
               (mapreplace #'commute (content-of amp))))))
 ; return the sum of a list of ampprod
 (defun amp-w/o-index (amp)
-  (mapcar #'op-w/o-index (cdr amp)))
+  (mapcar #'op-w/o-index (content-of amp)))
 (defun contract-hole-ampprod (hole-ind ampprod)
   (let ((last-amp '()))
     (mapreplace* (lambda (amp)
                    (let ((this-amp (amp-w/o-index amp)))
-                     (if (equal last-amp this-amp)
-                         nil
-                         (progn (setq last-amp this-amp)
-                                (contract-hole-amp hole-ind amp)))))
+                     (unless (equal last-amp this-amp)
+                       (setq last-amp this-amp)
+                       (contract-hole-amp hole-ind amp))))
                  ampprod)))
 (defun contract-particle-ampprod (particle-ind ampprod)
   (let ((last-amp '()))
     (mapreplace* (lambda (amp)
                    (let ((this-amp (amp-w/o-index amp)))
-                     (if (equal last-amp this-amp)
-                         nil
-                         (progn (setq last-amp this-amp)
-                                (contract-particle-amp particle-ind amp)))))
+                     (unless (equal last-amp this-amp)
+                       (setq last-amp this-amp)
+                       (contract-particle-amp particle-ind amp))))
                  ampprod)))
     
 ; return a list of amplitudes
+(defun contract-ops-ampprods (pair-ops ampprod-lst)
+  (flet ((link-h (pair-op ampprod)
+           (if (eql (hole-of pair-op) '-)
+               (contract-hole-ampprod (index-of pair-op) ampprod)
+               (list ampprod)))
+         (link-p (pair-op ampprod)
+           (if (eql (particle-of pair-op) '-)
+               (contract-particle-ampprod (index-of pair-op) ampprod)
+               (list ampprod)))
+         (contract-iter (func pair-ops ampprod-lst)
+           (reduce (lambda (ts-lst pair-op)
+                     (mapcan (lambda (ampprod) (funcall func pair-op ampprod))
+                             ts-lst))
+                   pair-ops :initial-value ampprod-lst)))
+    (contract-iter #'link-p pair-ops
+                   (contract-iter #'link-h pair-ops ampprod-lst))))
 (defun contract-h2e-ampprod (h2e ampprod)
-  (let* ((pair-e1 (first (content-of h2e)))
-         (pair-e2 (second (content-of h2e)))
-         (h2e-ops `((,(hole-of pair-e1) ,(index-of pair-e1))
-                    (,(particle-of pair-e1) ,(index-of pair-e1))
-                    (,(hole-of pair-e2) ,(index-of pair-e2))
-                    (,(particle-of pair-e2) ,(index-of pair-e2)))))
-    (flet ((contract-iter (h2e-op ampprod)
-             (let ((op-symb (first h2e-op))
-                   (op-index (second h2e-op)))
-               (cond ((eql op-symb 'h-)
-                      (contract-hole-ampprod op-index ampprod))
-                     ((eql op-symb 'p-)
-                      (contract-particle-ampprod op-index ampprod))
-                     (t (list ampprod))))))
-      (reduce (lambda (ampprod-lst op) ; apply op to every product of amp
-                (mapcan (lambda (ampprod) (contract-iter op ampprod))
-                        ampprod-lst))
-              h2e-ops :initial-value (list ampprod)))))
+  (contract-ops-ampprods (content-of h2e) (list ampprod)))
+
+; if the 2e-operator is symmetric, remove those duplicated amplitude products
+(defun contract-symm-h2e-ampprod (filter h2e ampprod)
+  (let ((ampprod-lst (contract-h2e-ampprod h2e ampprod)))
+    (remove-if-not filter ampprod-lst)))
+(defun ordering-h2e-symm-hole (ampprod)
+  (flet ((get-hole-index (amp)
+           (mapcan (lambda (pair-op)
+                     (let ((hole-idx (hole-of pair-op)))
+                       (and (numberp hole-idx) (list hole-idx))))
+                   (content-of amp))))
+    (format t "~a~%" (mapcan #'get-hole-index ampprod))
+    (apply #'< (mapcan #'get-hole-index ampprod))))
+
+(defun ordering-h2e-symm-particle (ampprod)
+  (flet ((get-hole-index (amp)
+           (mapcan (lambda (pair-op)
+                     (let ((particle-idx (particle-of pair-op)))
+                       (and (numberp particle-idx) (list particle-idx))))
+                   (content-of amp))))
+    (apply #'< (mapcan #'get-hole-index ampprod))))
+
+(defun id-pair-op (pair-op &optional (oplist '(1 2 +)))
+  (let ((shift (length oplist))
+        (h-id (position (hole-of pair-op) oplist))
+        (p-id (position (particle-of pair-op) oplist)))
+    (+ (* shift h-id) p-id)))
+
+; id of amplitude in terms of id-pair-op
+(defun id-amp (amp &optional (oplist '(1 2 +)))
+  (sort (mapcar (lambda (x) (id-pair-op x oplist))
+                (content-of amp))
+        #'<))
+
+(defun list-lt (l1 l2)
+  (cond ((null l1) t)
+        ((null l2) nil)
+        ((eq (car l1) (car l2))
+         (list-lt (cdr l1) (cdr l2)))
+        (t (< (car l1) (car l2)))))
+(defun id-ampprod (ampprod &optional (oplist '(1 2 +)))
+  (sort (mapcar (lambda (x) (id-amp x oplist)) ampprod)
+        (lambda (x y)
+          (let ((len-x (length x))
+                (len-y (length y)))
+            (if (eq len-x len-y)
+                (list-lt x y)
+                (< len-x len-y))))))
+
+
+(defun remove-h2e-symm-dup (ampprod-lst oplist)
+  (flet ((ampprod-eql (ts1 ts2)
+           (let ((swaplist `(,(second oplist) ,(first oplist) ,@(cddr oplist))))
+             (equal (id-ampprod ts1 oplist)
+                    (id-ampprod ts2 swaplist)))))
+    (remove-duplicates ampprod-lst :test #'ampprod-eql :from-end t)))
+
+
 
 (defun connected-amp? (amp)
   (notevery (lambda (pair-op)
               (and (eql (hole-of pair-op) 'h+)
                    (eql (particle-of pair-op) 'p+)))
-            (cdr amp)))
+            (content-of amp)))
 (defun connected-ampprod? (ampprod)
   (every #'connected-amp? ampprod))
 (defun remove-unconnected (ampprod-lst)
   (remove-if-not #'connected-ampprod? ampprod-lst))
 
-;(defun remove-h2e-symmetric-double-counting)
 
-;;;;;;;;;;;;;;;;;;;
-;(defun linked? (cell)
-;  (labels ((linked-ops? (ops)
-;             (cond ((null ops) t)
-;                   ((member 'kr (flatten (car ops)))
-;                    (linked-ops? (cdr ops)))
-;                   (t nil))))
-;    (linked-ops? (cdr cell))))
-;(defun remove-unlink-cell (cells)
-;  (remove-if-not #'linked? cells))
-;
-;(defun exist-uncontracted? (cell)
-;  (cond ((null cell) t)
-;        ((intersection (flatten cell) '(h+ h- p+ p-)) t)
-;        (t nil)))
-;(defun remove-uncontract-cell (cells)
-;  (remove-if #'exist-uncontracted? cells))
-;
-;
 ;;;; energy expression
 ;;;; H_0 + [H_0, T_2] + [[H_0, T_2], T_2]
 ;;;;     + [[[H_0, T_2], T_2], T_2] + [[[[H_0, T_2], T_2], T_2], T_2]

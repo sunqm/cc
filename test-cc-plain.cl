@@ -116,12 +116,9 @@
         '(t x pe+ he+ pe+)))
 (pass? (label-amp-contract-particle 'x '(t he+ pi+ he+ pi+))
        '(t he+ x he+ pi+))
-(pass? (label-line-once #'label-amp-contract-hole 'x
-                        '((t he+ pe+) (t hi+ pe+) (t he+ pi+) (t he+ pi+)))
-       '((t he+ pe+) (t x pe+) (t he+ pi+) (t he+ pi+)))
-(pass? (label-line-once #'label-amp-contract-hole 'x
-                        '((t he+ pe+) (t he+ pe+) (t he+ pi+) (t he+ pi+)))
-       '((t he+ pe+) (t he+ pe+) (t he+ pi+) (t he+ pi+)))
+(pass? (label-contract-pair #'label-amp-contract-hole 'x
+                        '((h hi- he+) (t hi+ pe+) (t he+ pi+) (t he+ pi+)))
+       '((h x he+) (t x pe+) (t he+ pi+) (t he+ pi+)))
 
 (pass? (label-lines '((h hi- pi- hi- he+) (t hi+ pe+) (t hi+ pe+) (t he+ pi+) (t he+ pe+)))
        '((h 1 2 3 4) (t 1 5) (t 3 6) (t 7 2) (t 8 9)))

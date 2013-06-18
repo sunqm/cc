@@ -161,9 +161,10 @@
   (label-amp (lambda (op) (or (eql op 'pi-) (eql op 'pi+))) idx amp))
 
 ;;; if not contracted, return the input ampprod
-(defun label-line-once (label-func idx ampprod)
-  (replace-once (lambda (amp) (funcall label-func idx amp))
-                ampprod))
+(defun label-contract-pair (label-func idx h-ampprod)
+  (cons (funcall label-func idx (car h-ampprod))
+        (replace-once (lambda (amp) (funcall label-func idx amp))
+                      (cdr h-ampprod))))
 
 ;;; index-the-lines
 ;;; return a product, sum over the indices which appear twice
@@ -171,13 +172,11 @@
   (let ((reg 0))
     (flet ((label-ctr (ts op)
              (cond ((eql op 'hi-)
-                    (let ((idx (incf reg)))
-                      (cons (label-amp-contract-hole idx (car ts))
-                            (label-line-once #'label-amp-contract-hole idx (cdr ts)))))
+                    (label-contract-pair #'label-amp-contract-hole
+                                         (incf reg) ts))
                    ((eql op 'pi-)
-                    (let ((idx (incf reg)))
-                      (cons (label-amp-contract-particle idx (car ts))
-                            (label-line-once #'label-amp-contract-particle idx (cdr ts)))))
+                    (label-contract-pair #'label-amp-contract-particle
+                                         (incf reg) ts))
                    (t ts)))
              (label-ext (amp)
                (let ((pairs (mapcar (lambda (op)

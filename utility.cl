@@ -1,7 +1,4 @@
-;;;;
-;;;; File: utility.cl
-;;;; Author
-;;;; Description:
+;;; -*- Mode: Common-Lisp; -*-
 
 (defun last-one? (lst)
   (null (cdr lst)))
@@ -196,3 +193,69 @@
                       (funcall f a1 a2))
                     l2))
             l1))
+
+;;;;;;;;;;;;;;;;;
+(defun mapreplace (func lst)
+  (if (null lst)
+      '()
+      (let* ((item1 (car lst))
+             (item-rest (cdr lst))
+             (res1 (funcall func item1))
+             (res-rest (mapcar (lambda (a) (cons item1 a))
+                               (mapreplace func item-rest))))
+        (if (null res1)
+            res-rest
+            (cons (cons res1 item-rest)
+                  res-rest)))))
+; (mapreplace #'evenp '(1 2 3))  => '((1 t 3))
+; (mapreplace #'evenp '(1 1 3))  => '()
+
+(defun mapreplace* (func lst)
+  (if (null lst)
+      '()
+      (let* ((item1 (car lst))
+             (item-rest (cdr lst))
+             (res1 (funcall func item1))
+             (res-rest (mapcar (lambda (a) (cons item1 a))
+                               (mapreplace* func item-rest))))
+        (if (null res1)
+            res-rest
+            (append (mapcar (lambda (a) (cons a item-rest)) res1)
+                    res-rest)))))
+; (mapreplace* (lambda (x) (mapreplace #'evenp x)) '((1) (2 3)))  => '((1) (t 3))
+; (mapreplace* (lambda (x) (mapreplace #'evenp x)) '((1) (2) (3)))  => '((1) (t) (3))
+
+;;; repalce once when (func item) is not nil
+(defun replace-once (func lst)
+  (if (null lst)
+      '()
+      (let* ((item1 (car lst))
+             (item-rest (cdr lst))
+             (res1 (funcall func item1)))
+        (if res1
+            (cons res1 item-rest)
+            (cons item1 (replace-once func item-rest))))))
+(defun replace-once* (func lst)
+  (if (null lst)
+      '()
+      (let* ((item1 (car lst))
+             (item-rest (cdr lst))
+             (res1 (funcall func item1)))
+        (if res1
+            (cons res1 item-rest)
+            (let ((res-result (replace-once* func item-rest)))
+              (if res-result
+                  (cons item1 res-result)))))))
+; (replace-once #'evenp '(1 2 3 4))  => '(1 t 3 4)
+; (replace-once #'evenp '(1 3))  => '(1 3)
+; (replace-once* #'evenp '(1 2 3 4))  => '(1 t 3 4)
+; (replace-once* #'evenp '(1 3))  => nil
+
+(defun maptree (func tree)
+  (mapcar (lambda (node)
+            (if (atom node)
+                (funcall func node)
+                (maptree func node)))
+          tree))
+; (maptree #'evenp '(1 (2 3) ((4 (5))))) => '(NIL (T NIL) ((T (NIL))))
+

@@ -1,11 +1,12 @@
 ;;; -*- Mode: Common Lisp; -*-
 ;;;
-;;; Description: based on Goldstone diagram
+;;; Description: based on antisymmetrized Goldstone diagram
 
 (load "utility.cl")
 
 (defun attach-tag (tag x)
   (cons tag x))
+(proclaim '(inline attach-tag))
 (defmacro tag-of (x)
   `(car ,x))
 (defmacro content-of (x)
@@ -42,6 +43,20 @@
     (if ops
         (attach-tag 't ops))))
 (defun contract-particle-amp (amp)
+  (let ((ops (replace-once* (lambda (op) (if (eql op 'pe+) 'pi+))
+                            (content-of amp))))
+    (if ops
+        (attach-tag 't ops))))
+;;; try to avoid redundant contraction
+(defun contract-hole-amp* (amp)
+  (let* ((first-ctr t)
+         (ops (replace-once* (lambda (op)
+                               (cond ((eql op 'pi+) (setq first-ctr nil))
+                                     ((and first-ctr (eql op 'pe+)) 'pi+)))
+                             (content-of amp))))
+    (if ops
+        (attach-tag 't ops))))
+(defun contract-particle-amp* (amp)
   (let ((ops (replace-once* (lambda (op) (if (eql op 'pe+) 'pi+))
                             (content-of amp))))
     (if ops
@@ -101,28 +116,39 @@
 (defun connected-ampprod? (ampprod)
   (every #'connected-amp? ampprod))
 
-(defun ext-line-to-in-line (op)
-  (cond ((eql op 'he-) 'hi-)
-        ((eql op 'pe-) 'pi-)
-        ((eql op 'he+) 'hi+)
-        ((eql op 'pe+) 'pi+)
-        (t op)))
+(defun ex-line-to-in-line (op)
+  (case op
+    (he- 'hi-)
+    (pe- 'pi-)
+    (he+ 'hi+)
+    (pe+ 'pi+)
+    (otherwise op)))
 (defun contract-h2e-ampprod (h2e ampprod)
-  (let ((ctr-h2e (maptree #'ext-line-to-in-line h2e))
+  (let ((ctr-h2e (maptree (lambda (op)
+                            (case op (he- 'hi-)
+                                     (pe- 'pi-)
+                                     (otherwise op)))
+                          h2e))
         (ctr-amps (contract-ops-ampprods-uniq (content-of h2e)
                                               (list ampprod))))
     (mapcar (lambda (amps) (cons ctr-h2e amps))
             (remove-if-not #'connected-ampprod? ctr-amps))))
 
 (defparameter *h2e-ops*
-  '((h he- he+ he+ pe+)
-    (h pe- pe+ he+ pe+)
-    (h he- he+ he- he+)
-    (h pe- pe+ pe- pe+)
-    (h he- he+ pe- pe+)
-    (h he- pe- he- he+)
-    (h he- pe- pe- pe+)
-    (h he- pe- he- pe-)))    
+  '((g he- he+ he+ pe+)
+    (g pe- pe+ he+ pe+)
+    (g he- he+ he- he+)
+    (g pe- pe+ pe- pe+)
+    (g he- he+ pe- pe+)
+    (g he- pe- he- he+)
+    (g he- pe- pe- pe+)
+    (g he- pe- he- pe-)))    
+(defparameter *h1e-h2e*
+  (append '((f he- he+)
+            (f pe- pe+)
+            (f he- pe-)
+            (f he+ pe+))
+          *h2e-ops*))
 
 (defun gen-amps-list (n-lst)
   (if (null n-lst)
@@ -144,14 +170,46 @@
 (defun count-tot-lines (pred ampprod)
   (apply #'+ (mapcar (lambda (amp) (count-if pred (content-of amp)))
                      ampprod)))
-
 (defun count-hole-lines (ampprod)
   (count-tot-lines (lambda (x) (member x '(he- he+ hi- hi+)))
                    ampprod))
+(defun count-excite-lines (ampprod)
+  (count-tot-lines (lambda (x) (member x '(he+ pe+)))
+                   ampprod))
+(defun count-dexcite-lines (ampprod)
+  (count-tot-lines (lambda (x) (member x '(he- pe-)))
+                   ampprod))
+
+(defun gen-diagrams-w/o-index (n-lst)
+  (flet ((d-ext-lines (ops ampprod)
+           (- (count-excite-lines (cons ops ampprod))
+              (count-dexcite-lines (list ops)))))
+    (let ((avail-exts (mapcar (lambda (x) (+ x x)) n-lst)))
+      (mapcan (lambda (ampprod)
+                (mapcan (lambda (ops)
+                          (if (member (d-ext-lines ops ampprod) avail-exts)
+                              (contract-h2e-ampprod ops ampprod)))
+                        *h1e-h2e*))
+              (gen-amps-list n-lst)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; adding indices
+;;; e.g. assign 2 to internal hole line (hi+ . 2)
+;;;
+
+;;; a rline is indexed operator == (op index)
+(defun make-rline (op idx)
+  (cons op idx))
+(defun symb-of-rline (op)
+  (car op))
+(defun idx-of-rline (op)
+  (cdr op))
 
 ; return nil if not replaced
 (defun label-amp (test idx amp)
-  (let ((ops (replace-once* (lambda (op) (if (funcall test op) idx))
+  (let ((ops (replace-once* (lambda (op) (if (funcall test op)
+                                             (make-rline op idx)))
                             (content-of amp))))
     (if ops
         (attach-tag (tag-of amp) ops))))
@@ -166,41 +224,69 @@
         (replace-once (lambda (amp) (funcall label-func idx amp))
                       (cdr h-ampprod))))
 
-;;; index-the-lines
 ;;; return a product, sum over the indices which appear twice
 (defun label-lines (ampprod)
   (let ((reg 0))
     (flet ((label-ctr (ts op)
-             (cond ((eql op 'hi-)
-                    (label-contract-pair #'label-amp-contract-hole
+             (case op
+               (hi- (label-contract-pair #'label-amp-contract-hole
                                          (incf reg) ts))
-                   ((eql op 'pi-)
-                    (label-contract-pair #'label-amp-contract-particle
+               (pi- (label-contract-pair #'label-amp-contract-particle
                                          (incf reg) ts))
-                   (t ts)))
-             (label-ext (amp)
+               (otherwise ts)))
+           (label-ex (symb)
+             (lambda (amp)
                (let ((pairs (mapcar (lambda (op)
-                                      (if (or (eql op 'he+) (eql op 'pe+))
-                                          (incf reg)
+                                      (if (eql op symb)
+                                          (make-rline op (incf reg))
                                           op))
                                     (content-of amp))))
-                 (attach-tag (tag-of amp) pairs))))
-      (let ((ctr (reduce #'label-ctr (content-of (car ampprod))
-                           :initial-value ampprod)))
-        (mapcar #'label-ext ctr)))))
+                 (attach-tag (tag-of amp) pairs)))))
+      (mapcar (label-ex 'pe+)
+              (mapcar (label-ex 'he+)
+                      (reduce #'label-ctr (content-of (car ampprod))
+                              :initial-value ampprod))))))
+
+;;; return the factor 1, 1/2 or 1/4
+(defun factor-in-line-pair (h-ampprod)
+  (flet ((count-eq-line (symb)
+           (apply #'* (mapcar (lambda (amp)
+                                (if (eql 2 (count symb (content-of amp) :key #'car))
+                                    .5 1))
+                              (cdr h-ampprod)))))
+    (* (count-eq-line 'hi+)
+       (count-eq-line 'pi+))))
+
+(defun vertex-eql? (v1 v2))
+
+;;; equivalent external lines must connect to the same vertex
+(defun find-rline-vertex (rline h-ampprod)
+  (find-if (lambda (amp) (member rline amp :test #'equal))
+           h-ampprod)))
+(defun ex-line-eql? (ex1 ex2 h-ampprod)
+  (and (eql (symb-of-rline ex1) (symb-of-rline ex2))
+       (equal  (find-rline-vertex ex1 h-ampprod)
+               (find-rline-vertex ex2 h-ampprod))))
+
+(defun permutation-ex-line (idx-lst h-ampprod)
+  )
+
+;(defun trace-line)
+
+;;; symmetric vertices will cancel against the permutation of inequivalent ex-lines
+(defun symmetric-amp (amp)
+  (every #'evenp (mapcar (lambda (x) (count x (content-of amp)))
+                         '(hi+ pi+ hi- pi-))))
+(defun symmetric-ampprod? (h-ampprod)
+  (if ())
+  (case (length ampprod)
+    (1 (equal symm1?))
+    (2 (equal (first ampprod) (second ampprod)))
+    (3 (and (equal (first ampprod) (second ampprod))
+            (equal symm1?)))
+    (4 (and (equal (first ampprod) (second ampprod))
+            (equal (third ampprod) (fourth ampprod))))
+    (otherwise nil)))
 
 ; todo
 (defun count-loops (ampprod))
-
-;(defun gen-amp-diagrams (n-lst)
-;  (flet ((ext-lines (op ampprod)
-;           (- (count-tot-lines '+ (cons op ampprod)))
-;              (count-tot-lines '- (list op))))
-;    (let ((amps (gen-amps-list n-lst))
-;          (dex-lines (mapcar (lambda (x) (+ x x)) n-lst)))
-;      (mapcan (lambda (ampprod)
-;                (mapcan (lambda (h2e-op)
-;                          (if (member (ext-lines h2e-op ampprod) dex-lines)
-;                              (contract-h2e-ampprod h2e-op ampprod)))
-;                        *h2e-ops*))
-;              amps))))

@@ -168,6 +168,9 @@
                                            (t hi+ pi+ he+ pe+))))
        1)
 
+(pass? (vertex-equiv? '(t hi+ pi+ he+ pe+) '(t hi+ pi+ he+ pe+))
+       t)
+
 (pass? (find-rline-vertex '(pi- . 2)
                           '((h (hi- . 1) (pi- . 2) (hi- . 3) (pi- . 4))
                             (t (hi+ . 1) (pi+ . 2) (he+ . 5) (pi+ . 4))))
@@ -187,5 +190,29 @@
                        (t (hi+ . 1) (pi+ . 2) (he+ . 5) (pi+ . 4))
                        (t (hi+ . 3) (pe+ . 7) (he+ . 6) (pe+ . 8))))
        nil)
+
+(pass? (track-rline '(he+ . 5) '((h (hi- . 1) (pi- . 2) (hi- . 3) (pi- . 4))
+                                 (t (hi+ . 1) (pi+ . 2) (he+ . 5) (pi+ . 4))
+                                 (t (hi+ . 3) (pe+ . 7) (he+ . 6) (pe+ . 8))))
+       '((pe+ . 7) (hi+ . 3) (hi- . 3) (pi- . 4) (pi+ . 4) (he+ . 5)))
+(pass? (track-rline '(he+ . 6) '((h (hi- . 1) (pi- . 2) (hi- . 3) (pi- . 4))
+                                 (t (hi+ . 1) (pi+ . 2) (he+ . 5) (pi+ . 4))
+                                 (t (hi+ . 3) (pe+ . 7) (he+ . 6) (pe+ . 8))))
+       '((pe+ . 8) (he+ . 6)))
+
+(pass? (count-loops '((h (hi- . 1) (pi- . 2) (hi- . 3) (pi- . 4))
+                      (t (hi+ . 1) (pi+ . 2) (he+ . 5) (pi+ . 4))
+                      (t (hi+ . 3) (pe+ . 7) (he+ . 6) (pe+ . 8))))
+       2)
+
+(pass? (hole-loop-sign '((h (hi- . 1) (pi- . 2) (hi- . 3) (pi- . 4))
+                         (t (hi+ . 1) (pi+ . 2) (he+ . 5) (pi+ . 4))
+                         (t (hi+ . 3) (pe+ . 7) (he+ . 6) (pe+ . 8))))
+       1)
+(pass? (collect-ext-holes '((h (hi- . 1) (pi- . 2) (hi- . 3) (pi- . 4))
+                         (t (hi+ . 1) (pi+ . 2) (he+ . 5) (pi+ . 4))
+                         (t (hi+ . 3) (pe+ . 7) (he+ . 6) (pe+ . 8))))
+
+
 ;(symmetric-ampprod? '((t hi+ pe+) (t hi+ pe+)))
 ;(symmetric-ampprod? '((t hi+ pe+) (t hi+ pe+)) (t he+ pi+) (t he+ pi+)))

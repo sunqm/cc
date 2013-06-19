@@ -94,7 +94,9 @@
 (defun id-amp (amp &optional (oplist '(hi- pi- hi+ pi+ he- pe- he+ pe+)))
   (let ((shift (length oplist)))
     (reduce (lambda (v x) (+ x (* shift v)))
-            (mapcar (lambda (x) (position x oplist)) (content-of amp))
+            (mapcar (lambda (x) (position x oplist))
+                    (sort (content-of amp)
+                          #'< :key (lambda (x) (position x oplist))))
             :initial-value 0)))
 (defun sort-ampprod (ampprod)
   (sort ampprod
@@ -116,7 +118,7 @@
 (defun connected-ampprod? (ampprod)
   (every #'connected-amp? ampprod))
 
-(defun ex-line-to-in-line (op)
+(defun ext-line-to-int-line (op)
   (case op
     (he- 'hi-)
     (pe- 'pi-)
@@ -170,9 +172,6 @@
 (defun count-tot-lines (pred ampprod)
   (apply #'+ (mapcar (lambda (amp) (count-if pred (content-of amp)))
                      ampprod)))
-(defun count-hole-lines (ampprod)
-  (count-tot-lines (lambda (x) (member x '(he- he+ hi- hi+)))
-                   ampprod))
 (defun count-excite-lines (ampprod)
   (count-tot-lines (lambda (x) (member x '(he+ pe+)))
                    ampprod))
@@ -247,8 +246,13 @@
                       (reduce #'label-ctr (content-of (car ampprod))
                               :initial-value ampprod))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; interperate the diagrams
+;;;
+
 ;;; return the factor 1, 1/2 or 1/4
-(defun factor-in-line-pair (h-ampprod)
+(defun factor-int-line-pair (h-ampprod)
   (flet ((count-eq-line (symb)
            (apply #'* (mapcar (lambda (amp)
                                 (if (eql 2 (count symb (content-of amp) :key #'car))
@@ -257,36 +261,85 @@
     (* (count-eq-line 'hi+)
        (count-eq-line 'pi+))))
 
-(defun vertex-eql? (v1 v2))
+(defun vertex-equiv? (amp1 amp2)
+  (flet ((get-symb (x)
+           (if (atom x) x (symb-of-rline x))))
+    (equal (mapcar #'get-symb (content-of amp1))
+           (mapcar #'get-symb (content-of amp2)))))
+(defun factor-of-symm-vertices (h-ampprod)
+  (let ((ampprod (cdr h-ampprod)))
+    (case (length ampprod)
+      (2 (if (vertex-equiv? (first ampprod) (second ampprod)) .5 1))
+      (3 ;todo
+       (and (equal (first ampprod) (second ampprod))
+              (equal symm1?)))
+      (4 ;todo
+       (and (equal (first ampprod) (second ampprod))
+            (equal (third ampprod) (fourth ampprod))))
+      (otherwise 1))))
 
 ;;; equivalent external lines must connect to the same vertex
 (defun find-rline-vertex (rline h-ampprod)
   (find-if (lambda (amp) (member rline amp :test #'equal))
-           h-ampprod)))
-(defun ex-line-eql? (ex1 ex2 h-ampprod)
+           h-ampprod))
+(defun ext-line-eql? (ex1 ex2 h-ampprod)
   (and (eql (symb-of-rline ex1) (symb-of-rline ex2))
        (equal  (find-rline-vertex ex1 h-ampprod)
                (find-rline-vertex ex2 h-ampprod))))
 
-(defun permutation-ex-line (idx-lst h-ampprod)
+;;; return the connected rlines
+(defun track-rline (rline h-ampprod)
+  (let ((finds (list rline)))
+    (labels ((find-friend (rline) ; find the rline on the same node
+               (let* ((v (content-of (find-rline-vertex rline h-ampprod)))
+                      (pos (position rline v :test #'equal)))
+                 (if (evenp pos)
+                     (nth (1+ pos) v)
+                     (nth (1- pos) v))))
+             (conn-int-line (rline)
+               (let ((s (symb-of-rline rline))
+                     (i (idx-of-rline rline)))
+                 (case s
+                   (hi- (make-rline 'hi+ i))
+                   (hi+ (make-rline 'hi- i))
+                   (pi- (make-rline 'pi+ i))
+                   (pi+ (make-rline 'pi- i))
+                   (otherwise nil))))
+             (searching (rline)
+               (let ((next-rline (find-friend rline)))
+                 (setq finds (cons next-rline finds))
+                 (if (member (symb-of-rline next-rline)
+                             '(hi- hi+ pi- pi+))
+                     (let ((nnext (conn-int-line next-rline)))
+                       (setq finds (cons nnext finds))
+                       (searching nnext))
+                     finds))))
+      (searching rline))))
+
+(defun count-loops (ampprod)
+  (count-tot-lines (lambda (rline)
+                     (eql (symb-of-rline rline) 'he+))
+                   ampprod))
+(defun count-hole-lines (ampprod)
+  (count-tot-lines (lambda (rline)
+                     (member (symb-of-rline rline) '(he- he+ hi- hi+)))
+                   ampprod))
+(defun hole-loop-sign (ampprod)
+  (if (evenp (+ (count-hole-lines ampprod)
+                (count-loops ampprod)))
+      1
+      -1))
+
+(defun collect-ext-holes (ampprod)
+  (remove-if-not #'identity
+                 (mapcar (lambda (amp)
+                           (find-if (lambda (rline)
+                                      (eql (symb-of-rline rline) 'he+))
+                                    (content-of amp)))
+                         ampprod)))
+
+;;; symmetric vertices will cancel against the permutation of inequivalent ext-lines
+;;; todo: generate all possible permutation among the external lines
+(defun permutation-ext-line (idx-lst h-ampprod)
   )
 
-;(defun trace-line)
-
-;;; symmetric vertices will cancel against the permutation of inequivalent ex-lines
-(defun symmetric-amp (amp)
-  (every #'evenp (mapcar (lambda (x) (count x (content-of amp)))
-                         '(hi+ pi+ hi- pi-))))
-(defun symmetric-ampprod? (h-ampprod)
-  (if ())
-  (case (length ampprod)
-    (1 (equal symm1?))
-    (2 (equal (first ampprod) (second ampprod)))
-    (3 (and (equal (first ampprod) (second ampprod))
-            (equal symm1?)))
-    (4 (and (equal (first ampprod) (second ampprod))
-            (equal (third ampprod) (fourth ampprod))))
-    (otherwise nil)))
-
-; todo
-(defun count-loops (ampprod))

@@ -251,6 +251,7 @@
 ;;; interperate the diagrams
 ;;;
 
+;;; equivalent internal lines give a factor of 1/2
 ;;; return the factor 1, 1/2 or 1/4
 (defun factor-int-line-pair (h-ampprod)
   (flet ((count-eq-line (symb)
@@ -338,8 +339,33 @@
                                     (content-of amp)))
                          ampprod)))
 
+;;; elem-lst has at least one item
+(defun permutation-sets (elem-lst &key (test #'equal))
+  (if (last-one? elem-lst)
+      (list elem-lst)
+      (mapcan (lambda (e)
+                (mapcar (lambda (s) (cons e s))
+                        (permutation-sets
+                         (remove e elem-lst :count 1 :test #'equal))))
+              (remove-duplicates elem-lst :test test :from-end t))))
+;;; even permutation and odd permutation
+(defun permutation-even-odd-sets (elem-lst &key (test #'equal))
+  (labels ((per-it (elems)
+             (if (last-one? elems)
+                 (list (list elems) '())
+                 (reduce (lambda (eo-sets e)
+                           (let* ((eset (first eo-sets))
+                                  (oset (second eo-sets))
+                                  (p (per-it (remove e elems :count 1 :test #'equal)))
+                                  (s1 (mapcar (lambda (s) (cons e s)) (first p)))
+                                  (s2 (mapcar (lambda (s) (cons e s)) (second p))))
+                             (if (evenp (position e elems))
+                                 (list (append s1 eset) (append s2 oset))
+                                 (list (append s2 eset) (append s1 oset)))))
+                         (remove-duplicates elems :test test :from-end t)
+                         :initial-value '(() ())))))
+    (mapcar #'reverse (per-it elem-lst))))
 ;;; symmetric vertices will cancel against the permutation of inequivalent ext-lines
-;;; todo: generate all possible permutation among the external lines
-(defun permutation-ext-line (idx-lst h-ampprod)
+(defun permutation-ext-line (el-lst h-ampprod)
+  ; todo proper list of external lines and determine the sign of each permutation
   )
-

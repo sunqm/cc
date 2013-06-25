@@ -53,6 +53,10 @@
                    (t (rec (car x) (rec (cdr x) acc))))))
     (rec x nil)))
 
+(defun compose (&rest functions)
+  (lambda (x)
+    (reduce #'funcall functions :from-end t :initial-value x)))
+
 ; recursive remove-if
 (defun prune (test tree)
   (labels ((rec (tree acc)
@@ -207,9 +211,6 @@
             res-rest
             (cons (cons res1 item-rest)
                   res-rest)))))
-; (mapreplace #'evenp '(1 2 3))  => '((1 t 3))
-; (mapreplace #'evenp '(1 1 3))  => '()
-
 (defun mapreplace* (func lst)
   (if (null lst)
       '()
@@ -222,8 +223,13 @@
             res-rest
             (append (mapcar (lambda (a) (cons a item-rest)) res1)
                     res-rest)))))
+; mapreplace make a list of match results, like mapcar
+; mapreplace* expend the list of match results, like mapcan
+; when no element matches, retun nil
+; (mapreplace #'evenp '(1 2 3))  => '((1 t 3))
+; (mapreplace #'evenp '(1 1 3))  => '()
 ; (mapreplace* (lambda (x) (mapreplace #'evenp x)) '((1) (2 3)))  => '((1) (t 3))
-; (mapreplace* (lambda (x) (mapreplace #'evenp x)) '((1) (2) (3)))  => '((1) (t) (3))
+; (mapreplace* (lambda (x) (mapreplace #'evenp x)) '((1) (1 3)))  => '()
 
 ;;; repalce once when (func item) is not nil
 (defun replace-once (func lst)
@@ -235,7 +241,7 @@
         (if res1
             (cons res1 item-rest)
             (cons item1 (replace-once func item-rest))))))
-(defun replace-once* (func lst)
+(defun replace-oncep (func lst)
   (if (null lst)
       '()
       (let* ((item1 (car lst))
@@ -243,13 +249,13 @@
              (res1 (funcall func item1)))
         (if res1
             (cons res1 item-rest)
-            (let ((res-result (replace-once* func item-rest)))
+            (let ((res-result (replace-oncep func item-rest)))
               (if res-result
                   (cons item1 res-result)))))))
 ; (replace-once #'evenp '(1 2 3 4))  => '(1 t 3 4)
 ; (replace-once #'evenp '(1 3))  => '(1 3)
-; (replace-once* #'evenp '(1 2 3 4))  => '(1 t 3 4)
-; (replace-once* #'evenp '(1 3))  => nil
+; (replace-oncep #'evenp '(1 2 3 4))  => '(1 t 3 4)
+; (replace-oncep #'evenp '(1 3))  => nil
 
 (defun maptree (func tree)
   (mapcar (lambda (node)
@@ -259,3 +265,14 @@
           tree))
 ; (maptree #'evenp '(1 (2 3) ((4 (5))))) => '(NIL (T NIL) ((T (NIL))))
 
+(defun find-anywhere (item tree)
+  (if (atom tree)
+      (if (eql item tree) tree)
+      (or (find-anywhere item (first tree))
+          (find-anywhere item (rest tree)))))
+
+(defun find-anywhere-if (predicate tree)
+  (if (atom tree)
+      (if (funcall predicate tree) tree)
+      (or (find-anywhere-if predicate (first tree))
+          (find-anywhere-if predicate (rest tree)))))

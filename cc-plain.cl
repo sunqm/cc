@@ -11,7 +11,6 @@
   `(car ,x))
 (defmacro content-of (x)
   `(cdr ,x))
-;;; commutator : p q^\dagger + q^\dagger p = \delta_{pq}
 
 ;;; type:
 ;;; he+   ->-|
@@ -38,26 +37,26 @@
 
 ;;; contraction of one hole and an amplitude
 (defun contract-hole-amp (amp)
-  (let ((ops (replace-once* (lambda (op) (if (eql op 'he+) 'hi+))
+  (let ((ops (replace-oncep (lambda (op) (if (eql op 'he+) 'hi+))
                             (content-of amp))))
     (if ops
         (attach-tag 't ops))))
 (defun contract-particle-amp (amp)
-  (let ((ops (replace-once* (lambda (op) (if (eql op 'pe+) 'pi+))
+  (let ((ops (replace-oncep (lambda (op) (if (eql op 'pe+) 'pi+))
                             (content-of amp))))
     (if ops
         (attach-tag 't ops))))
 ;;; try to avoid redundant contraction
 (defun contract-hole-amp* (amp)
   (let* ((first-ctr t)
-         (ops (replace-once* (lambda (op)
+         (ops (replace-oncep (lambda (op)
                                (cond ((eql op 'pi+) (setq first-ctr nil))
                                      ((and first-ctr (eql op 'pe+)) 'pi+)))
                              (content-of amp))))
     (if ops
         (attach-tag 't ops))))
 (defun contract-particle-amp* (amp)
-  (let ((ops (replace-once* (lambda (op) (if (eql op 'pe+) 'pi+))
+  (let ((ops (replace-oncep (lambda (op) (if (eql op 'pe+) 'pi+))
                             (content-of amp))))
     (if ops
         (attach-tag 't ops))))
@@ -197,7 +196,7 @@
 ;;; e.g. assign 2 to internal hole line (hi+ . 2)
 ;;;
 
-;;; a rline is indexed operator == (op index)
+;;; rline is an indexed operator == (op index)
 (defun make-rline (op idx)
   (cons op idx))
 (defun symb-of-rline (op)
@@ -207,7 +206,7 @@
 
 ; return nil if not replaced
 (defun label-amp (test idx amp)
-  (let ((ops (replace-once* (lambda (op) (if (funcall test op)
+  (let ((ops (replace-oncep (lambda (op) (if (funcall test op)
                                              (make-rline op idx)))
                             (content-of amp))))
     (if ops
@@ -262,11 +261,26 @@
     (* (count-eq-line 'hi+)
        (count-eq-line 'pi+))))
 
+;;; equivalent external lines must connect to the same vertex
+(defun find-rline-vertex (rline h-ampprod)
+  (find-if (lambda (amp) (member rline amp :test #'equal))
+           h-ampprod))
+(defun ext-line-eql? (ex1 ex2 h-ampprod)
+  ;;; same symbol and same vertex
+  (and (eql (symb-of-rline ex1) (symb-of-rline ex2))
+       (equal (find-rline-vertex ex1 h-ampprod)
+              (find-rline-vertex ex2 h-ampprod))))
+
 (defun vertex-equiv? (amp1 amp2)
   (flet ((get-symb (x)
            (if (atom x) x (symb-of-rline x))))
     (equal (mapcar #'get-symb (content-of amp1))
            (mapcar #'get-symb (content-of amp2)))))
+(defun ext-line-symm-eql? (ex1 ex2 h-ampprod)
+  ;;; same symbol on equivalent vertex
+  (vertex-equiv? (find-rline-vertex ex1 h-ampprod)
+                 (find-rline-vertex ex2 h-ampprod)))
+
 (defun factor-of-symm-vertices (h-ampprod)
   (let ((ampprod (cdr h-ampprod)))
     (case (length ampprod)
@@ -278,15 +292,6 @@
        (and (equal (first ampprod) (second ampprod))
             (equal (third ampprod) (fourth ampprod))))
       (otherwise 1))))
-
-;;; equivalent external lines must connect to the same vertex
-(defun find-rline-vertex (rline h-ampprod)
-  (find-if (lambda (amp) (member rline amp :test #'equal))
-           h-ampprod))
-(defun ext-line-eql? (ex1 ex2 h-ampprod)
-  (and (eql (symb-of-rline ex1) (symb-of-rline ex2))
-       (equal  (find-rline-vertex ex1 h-ampprod)
-               (find-rline-vertex ex2 h-ampprod))))
 
 ;;; return the connected rlines
 (defun track-rline (rline h-ampprod)
@@ -365,7 +370,13 @@
                          (remove-duplicates elems :test test :from-end t)
                          :initial-value '(() ())))))
     (mapcar #'reverse (per-it elem-lst))))
+
 ;;; symmetric vertices will cancel against the permutation of inequivalent ext-lines
-(defun permutation-ext-line (el-lst h-ampprod)
-  ; todo proper list of external lines and determine the sign of each permutation
-  )
+(defun permutation-ext-line (h-ampprod)
+  (let* ((h-ext (collect-ext-holes h-ampprod))
+         (p-ext (mapcar #'car (track-rline h-ext h-ampprod))))
+    (flet ((ext-eql (x1 x2)
+             (or (ext-line-eql? x1 x2 h-ampprod)
+                 (ext-line-symm-eql? x1 x2 h-ampprod))))
+      (list (permutation-even-odd-sets h-ext :test #'ext-eql)
+            (permutation-even-odd-sets p-ext :test #'ext-eql)))))

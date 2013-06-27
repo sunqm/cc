@@ -111,6 +111,13 @@
                    (push obj result)))))
         (values (nreverse result) max))))
 
+;;; the largest n items
+(defun most-n (n fn lst)
+  (if (eql n 1)
+      (list (most fn lst))
+      (subseq (sort (copy-seq lst) #'> :key fn)
+              0 n)))
+
 (defun best (fn lst)
   (if (null lst)
       nil
@@ -199,26 +206,26 @@
             l1))
 
 ;;;;;;;;;;;;;;;;;
-(defun mapreplace (func lst)
+(defun mapreplace (fn lst)
   (if (null lst)
       '()
       (let* ((item1 (car lst))
              (item-rest (cdr lst))
-             (res1 (funcall func item1))
+             (res1 (funcall fn item1))
              (res-rest (mapcar (lambda (a) (cons item1 a))
-                               (mapreplace func item-rest))))
+                               (mapreplace fn item-rest))))
         (if (null res1)
             res-rest
             (cons (cons res1 item-rest)
                   res-rest)))))
-(defun mapreplace* (func lst)
+(defun mapreplace* (fn lst)
   (if (null lst)
       '()
       (let* ((item1 (car lst))
              (item-rest (cdr lst))
-             (res1 (funcall func item1))
+             (res1 (funcall fn item1))
              (res-rest (mapcar (lambda (a) (cons item1 a))
-                               (mapreplace* func item-rest))))
+                               (mapreplace* fn item-rest))))
         (if (null res1)
             res-rest
             (append (mapcar (lambda (a) (cons a item-rest)) res1)
@@ -231,25 +238,25 @@
 ; (mapreplace* (lambda (x) (mapreplace #'evenp x)) '((1) (2 3)))  => '((1) (t 3))
 ; (mapreplace* (lambda (x) (mapreplace #'evenp x)) '((1) (1 3)))  => '()
 
-;;; repalce once when (func item) is not nil
-(defun replace-once (func lst)
+;;; repalce once when (fn item) is not nil
+(defun replace-once (fn lst)
   (if (null lst)
       '()
       (let* ((item1 (car lst))
              (item-rest (cdr lst))
-             (res1 (funcall func item1)))
+             (res1 (funcall fn item1)))
         (if res1
             (cons res1 item-rest)
-            (cons item1 (replace-once func item-rest))))))
-(defun replace-oncep (func lst)
+            (cons item1 (replace-once fn item-rest))))))
+(defun replace-oncep (fn lst)
   (if (null lst)
       '()
       (let* ((item1 (car lst))
              (item-rest (cdr lst))
-             (res1 (funcall func item1)))
+             (res1 (funcall fn item1)))
         (if res1
             (cons res1 item-rest)
-            (let ((res-result (replace-oncep func item-rest)))
+            (let ((res-result (replace-oncep fn item-rest)))
               (if res-result
                   (cons item1 res-result)))))))
 ; (replace-once #'evenp '(1 2 3 4))  => '(1 t 3 4)
@@ -257,11 +264,11 @@
 ; (replace-oncep #'evenp '(1 2 3 4))  => '(1 t 3 4)
 ; (replace-oncep #'evenp '(1 3))  => nil
 
-(defun maptree (func tree)
+(defun maptree (fn tree)
   (mapcar (lambda (node)
             (if (atom node)
-                (funcall func node)
-                (maptree func node)))
+                (funcall fn node)
+                (maptree fn node)))
           tree))
 ; (maptree #'evenp '(1 (2 3) ((4 (5))))) => '(NIL (T NIL) ((T (NIL))))
 

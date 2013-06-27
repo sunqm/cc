@@ -85,7 +85,7 @@
              (let ((this-pair (op-w/o-index pair-op)))
                (unless (or (numberp (hole-of pair-op))
                            (equal last-pair this-pair))
-                 (setq last-pair this-pair)
+                 (setf last-pair this-pair)
                  (make-pair-op hole-ind
                                (particle-of pair-op)
                                (index-of pair-op))))))
@@ -98,7 +98,7 @@
              (let ((this-pair (op-w/o-index pair-op)))
                (unless (or (numberp (particle-of pair-op))
                            (equal last-pair this-pair))
-                 (setq last-pair this-pair)
+                 (setf last-pair this-pair)
                  (make-pair-op (hole-of pair-op)
                                particle-ind
                                (index-of pair-op))))))
@@ -113,7 +113,7 @@
     (mapreplace* (lambda (amp)
                    (let ((this-amp (amp-w/o-index amp)))
                      (unless (equal last-amp this-amp)
-                       (setq last-amp this-amp)
+                       (setf last-amp this-amp)
                        (contract-hole-amp hole-ind amp))))
                  ampprod)))
 (defun contract-particle-ampprod (particle-ind ampprod)
@@ -121,7 +121,7 @@
     (mapreplace* (lambda (amp)
                    (let ((this-amp (amp-w/o-index amp)))
                      (unless (equal last-amp this-amp)
-                       (setq last-amp this-amp)
+                       (setf last-amp this-amp)
                        (contract-particle-amp particle-ind amp))))
                  ampprod)))
     

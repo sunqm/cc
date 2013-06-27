@@ -79,7 +79,7 @@
          (c1 (mapreplace (lambda (node)
                            (when (and (not (equal last-node node))
                                       (eql (in-line-of node) 'he+))
-                             (setq last-node node)
+                             (setf last-node node)
                              (make-node (out-line-of node)
                                         (make-line 'hi+ idx))))
                          (content-of amp))))
@@ -90,7 +90,7 @@
          (c1 (mapreplace (lambda (node)
                            (when (and (not (equal last-node node))
                                       (eql (out-line-of node) 'pe+))
-                             (setq last-node node)
+                             (setf last-node node)
                              (make-node (make-line 'pi+ idx)
                                         (in-line-of node))))
                          (content-of amp))))
@@ -101,14 +101,14 @@
   (let ((last-amp '()))
     (mapreplace* (lambda (amp)
                    (unless (equal last-amp amp)
-                     (setq last-amp amp)
+                     (setf last-amp amp)
                      (contract-hole-amp idx amp)))
                 ampprod)))
 (defun contract-particle-ampprod (idx ampprod)
   (let ((last-amp '()))
     (mapreplace* (lambda (amp)
                    (unless (equal last-amp amp)
-                     (setq last-amp amp)
+                     (setf last-amp amp)
                      (contract-particle-amp idx amp)))
                  ampprod)))
 
@@ -142,22 +142,27 @@
 (defun id-of-node (node)
   (flet ((type-of-line (l)
            ;; valide node id can be
-           ;; (hi- pi-) == 0; (hi- hi+) == 1; (hi- he+) == 2; (hi- pe-) __ 2;
-           ;; (pi+ pi-) == 3; (pi+ hi+) == 4; (pi+ he+) == 5; (pi+ pe-) __ 5;
-           ;; (pe+ pi-) == 6; (pe+ hi+) == 7; (pe+ he+) == 8; (pe+ pe-) __ 8;
-           ;; (he- pi-) __ 6; (he- hi+) __ 7; (he- he+) __ 8; (he- pe-) __ 8;
-           ;; since he- pe- are actually non-exist, these id are unique
+           ;; (hi- pi-) == 0 ; (hi- hi+) == 1 ; (hi- he+) == 2 ; (hi- pe-) __ 3 ;
+           ;; (pi+ pi-) == 4 ; (pi+ hi+) == 5 ; (pi+ he+) == 6 ; (pi+ pe-) __ 7 ;
+           ;; (pe+ pi-) == 8 ; (pe+ hi+) == 9 ; (pe+ he+) == 10; (pe+ pe-) __ 11;
+           ;; (he- pi-) __ 12; (he- hi+) __ 13; (he- he+) __ 14; (he- pe-) __ 15;
            (if (atom l)
-               2
+               (case l
+                 ((pe+ he+) 2)
+                 ((pe- he-) 3))
                (case (symb-of l)
                  ((pi- hi-) 0)
                  ((pi+ hi+) 1)
-                 (otherwise 2))))
+                 ((pe+ he+) 2)
+                 ((pe- he-) 3))))
          (id-of-line (l)
-           (if (atom l) 0 (idx-of l))))
+           (cond ((atom l) 0)
+                 ((member (symb-of l) '(hi+ pi+ hi- pi-))
+                  (idx-of l))
+                 (t 0))))
     (let ((lo (out-line-of node))
           (li (in-line-of node)))
-      (+ (* 100 (+ (* 3 (type-of-line lo)) (type-of-line li)))
+      (+ (* 100 (+ (* 4 (type-of-line lo)) (type-of-line li)))
          (+ (* 4 (id-of-line lo)) (id-of-line li))))))
 (defun id-of-amp (amp)
   (sort (mapcar #'id-of-node (content-of amp))
@@ -170,7 +175,12 @@
         (t (< (car lst1) (car lst2)))))
 (defun id-of-ampprod (ampprod)
   (sort (mapcar #'id-of-amp ampprod)
-        (lambda (id1 id2) (list<= id1 id2))))
+        (lambda (id1 id2)
+          (let ((len1 (length id1))
+                (len2 (length id2)))
+            (if (eql len1 len2)
+                (list<= id1 id2)
+                (< len1 len2))))))
 
 (defun remove-symm-eq-ampprod (ampprod-lst)
   (flet ((swap-e12 (ampprod)
@@ -366,11 +376,11 @@
 ;                   (otherwise nil))))
 ;             (searching (rline)
 ;               (let ((next-rline (find-friend rline)))
-;                 (setq finds (cons next-rline finds))
+;                 (setf finds (cons next-rline finds))
 ;                 (if (member (symb-of next-rline)
 ;                             '(hi- hi+ pi- pi+))
 ;                     (let ((nnext (conn-int-line next-rline)))
-;                       (setq finds (cons nnext finds))
+;                       (setf finds (cons nnext finds))
 ;                       (searching nnext))
 ;                     finds))))
 ;      (searching rline))))

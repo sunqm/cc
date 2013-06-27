@@ -51,8 +51,6 @@
                        matches)))))
     (reverse (find-most n))))
 
-;(defun find-most-n-common-term* (n lst-term))
-
 ;;; return two sets: the first set includes obj and the second set collects the rest
 (defun subgroup-terms (obj lst-term)
   (flet ((contain-obj (term)
@@ -67,24 +65,32 @@
            (multi-s (remove-if #'single-term? sub-set1)))
       (values singles multi-s set-rest))))
 
-;;; given a list of products to be sumed up, regroup them to be
+;;; given a list of products to be sumed up, regroup them to
 ;;; a list of polynomials; each polynomial is sth like (+ (* a b (+ c ..)))
+;;; 2 is enough for most case. Very low possibility that 3 most common
+;;; terms are adjoined in the same term-products.
+(defparameter *common-term-search-trial* 2)
+;;; find all possible regroup candidates
 (defun regroup-iter (poly)
-  (if (null poly) '()
-      (let* ((match (find-most-n-common-term 1 poly))
-             (count (caar match))
-             (obj (cadar match)))
-        (if (eql count 1)
-            poly
-            (multiple-value-bind (singles multi-s set-rest)
-                (subgroup-terms obj poly)
-              `((* ,obj (+ ,@singles ,@(regroup multi-s)))
-                ,@(regroup set-rest)))))))
+  (cond ((null poly) (list '()))
+        ((last-one? poly) (list poly))
+        (t (flet ((expand (common-term)
+                    (let ((count (car common-term))
+                          (obj (cadr common-term)))
+                      (if (eql count 1)
+                          '() ; don't regroup since no common terms are found
+                          (multiple-value-bind (singles multi-s set-rest)
+                              (subgroup-terms obj poly)
+                            (flet ((comb (regp-mults regp-rest)
+                                     `((* ,obj (+ ,@singles ,@regp-mults))
+                                       ,@regp-rest)))
+                              (mapnest #'comb
+                                       (regroup-iter multi-s)
+                                       (regroup-iter set-rest))))))))
+             (mapcan #'expand (find-most-n-common-term *common-term-search-trial* poly))))))
 (defun regroup (poly)
-  (let ((res (regroup-iter poly)))
-    (if (last-one? res)
-        (car res)
-        (cons '+ (regroup-iter poly)))))
+  (mapcar (lambda (res) (cons '+ res))
+          (regroup-iter poly)))
 
 
 

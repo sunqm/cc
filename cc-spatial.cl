@@ -30,7 +30,7 @@
   (list symb idx))
 (defun symb-of (line)
   (car line))
-(defun idx-of (line)
+(defun index-of (line)
   (cadr line))
 
 ;;; a node contains an "in" and an "out" lines
@@ -115,7 +115,7 @@
 (defun contract-op-ampprods (op ampprod-lst)
   (flet ((line-func (line ampprod-lst)
            (let ((symb (symb-of line))
-                 (idx (idx-of line)))
+                 (idx (index-of line)))
              (case symb
                (he- (let ((res (mapcan (lambda (a)
                                          (contract-hole-ampprod idx a))
@@ -139,31 +139,38 @@
 (defun connected-ampprod? (ampprod)
   (every #'connected-amp? ampprod))
 
+(defun symb-id-of-line (line)
+  (if (atom line)
+      (case line
+        ((pe+ he+) 2)
+        ((pe- he-) 3))
+      (case (symb-of line)
+        ((pi- hi-) 0)
+        ((pi+ hi+) 1)
+        ((pe+ he+) 2)
+        ((pe- he-) 3))))
+(defun index-id-of-line (line)
+  (cond ((atom line) 0)
+        ((member (symb-of line) '(hi+ pi+ hi- pi-))
+         (index-of line))
+        (t 0)))
+  ;; valide node id can be
+  ;; (hi- pi-) == 0 ; (hi- hi+) == 1 ; (hi- he+) == 2 ; (hi- pe-) __ 3 ;
+  ;; (pi+ pi-) == 4 ; (pi+ hi+) == 5 ; (pi+ he+) == 6 ; (pi+ pe-) __ 7 ;
+  ;; (pe+ pi-) == 8 ; (pe+ hi+) == 9 ; (pe+ he+) == 10; (pe+ pe-) __ 11;
+  ;; (he- pi-) __ 12; (he- hi+) __ 13; (he- he+) __ 14; (he- pe-) __ 15;
+(defun symb-id-of-node (node)
+  (let ((lo (out-line-of node))
+        (li (in-line-of node)))
+    (+ (* 4 (symb-id-of-line lo)) (symb-id-of-line li))))
 (defun id-of-node (node)
-  (flet ((type-of-line (l)
-           ;; valide node id can be
-           ;; (hi- pi-) == 0 ; (hi- hi+) == 1 ; (hi- he+) == 2 ; (hi- pe-) __ 3 ;
-           ;; (pi+ pi-) == 4 ; (pi+ hi+) == 5 ; (pi+ he+) == 6 ; (pi+ pe-) __ 7 ;
-           ;; (pe+ pi-) == 8 ; (pe+ hi+) == 9 ; (pe+ he+) == 10; (pe+ pe-) __ 11;
-           ;; (he- pi-) __ 12; (he- hi+) __ 13; (he- he+) __ 14; (he- pe-) __ 15;
-           (if (atom l)
-               (case l
-                 ((pe+ he+) 2)
-                 ((pe- he-) 3))
-               (case (symb-of l)
-                 ((pi- hi-) 0)
-                 ((pi+ hi+) 1)
-                 ((pe+ he+) 2)
-                 ((pe- he-) 3))))
-         (id-of-line (l)
-           (cond ((atom l) 0)
-                 ((member (symb-of l) '(hi+ pi+ hi- pi-))
-                  (idx-of l))
-                 (t 0))))
-    (let ((lo (out-line-of node))
-          (li (in-line-of node)))
-      (+ (* 100 (+ (* 4 (type-of-line lo)) (type-of-line li)))
-         (+ (* 4 (id-of-line lo)) (id-of-line li))))))
+  (let ((lo (out-line-of node))
+        (li (in-line-of node)))
+    (+ (* 100 (+ (* 4 (symb-id-of-line lo)) (symb-id-of-line li)))
+       (+ (* 4 (index-id-of-line lo)) (index-id-of-line li)))))
+(defun symb-id-of-amp (amp)
+  (sort (mapcar #'symb-id-of-node (content-of amp))
+        #'<))
 (defun id-of-amp (amp)
   (sort (mapcar #'id-of-node (content-of amp))
         #'<))
@@ -367,7 +374,7 @@
 ;                     (nth (1- pos) v))))
 ;             (conn-int-line (rline)
 ;               (let ((s (symb-of rline))
-;                     (i (idx-of rline)))
+;                     (i (index-of rline)))
 ;                 (case s
 ;                   (hi- (make-line 'hi+ i))
 ;                   (hi+ (make-line 'hi- i))

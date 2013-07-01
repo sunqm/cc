@@ -119,9 +119,7 @@
 ; fixme: control the usage of memory
 (defun filter-for-tight-mem (ampprod)
   (flet ((ext-int-line (amp)
-           (let* ((n-int (count-if (lambda (x)
-                                     (if (listp x)
-                                         (member (symb-of x) '(hi+ pi+ hi- pi-))))
+           (let* ((n-int (count-if #'ext-line?
                                    (apply #'append (content-of amp))))
                   (n-ext (- (* 2 (length (content-of amp))) n-int)))
              (values n-ext n-int))))
@@ -130,24 +128,63 @@
                    (multiple-value-bind (n-ext n-int) (ext-int-line amp)
                      (> (+ (- tot-ext n-ext) n-int) *avial-ext-lines*)))
                  ampprod))))
-(defun amp-type-iden? (amp1 amp2)
-  (let ((tid1 (symb-id-of-amp amp1))
-        (tid2 (symb-id-of-amp amp2)))
-    (equal tid1 tid2)))
 
 (defun find-most-common-amp (n ampprod-lst)
   (find-best-common-term n (mapcar #'filter-for-tight-mem ampprod-lst)
                          #'symb-id-of-amp))
 
+(defun line-int<->ext (line)
+  (flet ((switch-symb (symb)
+           (case symb
+             (hi- 'he-)
+             (pi- 'pe-)
+             (hi+ 'he+)
+             (pi+ 'pe+)
+             (he- 'hi-)
+             (pe- 'pi-)
+             (he+ 'hi+)
+             (pe+ 'pi+))))
+  (if (listp line)
+      (make-line (switch-symb (symb-of line)) (index-of line))
+      (switch-symb (symb-of line)))))
+      
+(defun replace-op-line (rep-tab op))
 (defun subgroup-ampprods (term ampprod-lst)
   (flet ((contain-obj (prod)
-           (member term prod :test #'amp-type-iden?))
+           (member (symb-id-of-amp term) prod
+                   :key symb-id-of-amp :test #'equal))
          (single-term? (prod)
-           (last-one? prod)))
-    ;;; fixme: change line-symb
+           (last-one? prod))
+        ;(extract-amp-idx (amp)
+        ;  (mapcan (lambda (node)
+        ;            (mapcar (lambda (line)
+        ;                      (if (listp line)
+        ;                          (index-of line)
+        ;                          (content-of amp)
+         (swap-index (ampprod) ; fixme: change line-symb
+           (let ((matched-term (find (sym-id-of-amp term) ampprod
+                                     :key symb-id-of-amp :test #'equal))
+                 (subprod (remove (symb-id-of-amp term) prod
+                                  :key #'symb-id-of-amp :test #'equal))
+                 (op-int->ext (replace-once (lambda (amp)
+                                              (if (member (tag-of amp) '(f g))
+                                                  ...)
+                                              subprod)
+                   ;(cons (tag-of op)
+                   ;      (mapcaar (lambda (line)
+                   ;                (if (find-anywhere (index-of line) matched-term)
+                   ;                    ; i -> e
+                   ;                    )
+                   ;              (content-of op))
+             (if (equal (id-of-amp term) (id-of-amp matched-term))
+                 subprod
+                 (replace-ampprod-index '((1 . 3) (2 . 4) (3 . 1) (4 . 2))
+                                        subprod)))))
     (let* ((set1 (remove-if-not #'contain-obj ampprod-lst))
            (set-rest (remove-if #'contain-obj ampprod-lst))
-           (sub-set1 (mapcar (lambda (prod) (remove term prod :test #'amp-type-iden?))
+           (sub-set1 (mapcar (lambda (prod)
+                               (remove (symb-id-of-amp term) prod
+                                       :key #'symb-id-of-amp :test #'equal))
                              set1))
            (singles (mapcar #'car (remove-if-not #'single-term? sub-set1)))
            (multi-s (remove-if #'single-term? sub-set1)))
@@ -171,7 +208,7 @@
                    (mapcar (lambda (x) (cons '* x)) poly)
                    (mapcan (lambda (common-term) (expand (cadr common-term)))
                            commons)))))))
-
+; determine whether swap ij only, swap ab only
 
 
 

@@ -41,7 +41,8 @@
 (defun in-line-of (node) (cadr node))
 
 (defparameter *h2e-ops*
-  '((g ((he- 1) (he+ 2)) ((pe+ 3) (he+ 4)))
+  '(;(g ((pe+ 1) (he+ 2)) ((pe+ 3) (he+ 4)))
+    (g ((he- 1) (he+ 2)) ((pe+ 3) (he+ 4)))
     (g ((pe+ 1) (pe- 2)) ((pe+ 3) (he+ 4)))
     (g ((he- 1) (he+ 2)) ((he- 3) (he+ 4)))
     (g ((pe+ 1) (pe- 2)) ((pe+ 3) (pe- 4)))
@@ -61,19 +62,15 @@
   (loop repeat n
        collect op))
 
-; amp == (t (op1 . op2) (op3 . op4) ...)
+; amp == (t (op1 op2) (op3 op4) ...)
 ; n-excitation amplitude without linking
 ; first make n pairs, then label indices
 (defun make-new-amp (n)
   (attach-tag 't (op-copy n (make-node 'pe+ 'he+))))
-; t1 = (t (he+ . pe+))
-; t2 = (t (he+ . pe+) (he+ . pe+))
-;
-;todo assign indices
-;
-
+; t1 = (t (he+ pe+))
+; t2 = (t (he+ pe+) (he+  pe+))
+                         
 ;;; contraction of one hole and an amplitude
-;;; can use replace-oncep instead
 (defun contract-hole-amp (idx amp)
   (let* ((last-node '())
          (c1 (mapreplace (lambda (node)
@@ -189,11 +186,24 @@
                 (list<= id1 id2)
                 (< len1 len2))))))
 
+;;; rep-tab is a pair-list which stores the mapping of indices
+(defun replace-ampprod-index (rep-tab ampprod)
+  (flet ((replace-line (line)
+           (if (listp line)
+               (let ((k-v (assoc (index-of line) rep-tab)))
+                 (if k-v
+                     (make-line (symb-of line) (cdr k-v))
+                     line))
+               line))
+    (mapcar (lambda (amp)
+              (cons (tag-of amp)
+                    (mapcaar #'replace-line (content-of amp))))
+            ampprod)))
+;;; 
 (defun remove-symm-eq-ampprod (ampprod-lst)
   (flet ((swap-e12 (ampprod)
-           (maptree (lambda (n)
-                      (case n (1 3) (2 4) (3 1) (4 2) (otherwise n)))
-                    ampprod)))
+           (replace-ampprod-index '((1 . 3) (2 . 4) (3 . 1) (4 . 2))
+                                  ampprod)))
     (remove-duplicates ampprod-lst
                        :test (lambda (a1 a2)
                                (equal (id-of-ampprod a1)
@@ -204,9 +214,8 @@
   (let ((nodes (content-of op)))
     (if (eql (length nodes) 1)
         nil ; one-electron operator
-        (let ((symbs1 (mapcar #'symb-of (car nodes)))
-              (symbs2 (mapcar #'symb-of (cadr nodes))))
-          (equal symbs1 symbs2)))))
+        (equal (symb-id-of-node (car nodes))
+               (symb-id-of-node (cadr nodes))))))
 (defun contract-h2e-ampprod (h2e ampprod)
   (flet ((contract (ampprod-lst)
            (contract-op-ampprods (content-of h2e) ampprod-lst))
@@ -244,16 +253,25 @@
                                  new-lst)))
         (append (list t1 t2 t3 t4) mod-lst))))
 
-(defun count-tot-lines (pred ampprod)
-  (apply #'+ (mapcar (lambda (amp)
-                       (count-if pred (content-of amp)))
+(defun count-amp-lines (line-pred amp)
+  (apply #'+ (mapcar (lambda (node)
+                         (count-if line-pred node))
+                     (content-of amp))))
+(defun count-tot-lines (line-pred ampprod)
+  (apply #'+ (mapcar (lambda (amp) (count-amp-lines line-pred amp))
                      ampprod)))
 (defun count-excite-lines (ampprod)
-  (count-if (lambda (x) (member x '(he+ pe+)))
-            (flatten ampprod)))
+  (count-tot-lines (lambda (x)
+                     (if (listp x)
+                         (member (symb-of x) '(he+ pe+))
+                         (member x '(he+ pe+))))
+                   ampprod))
 (defun count-dexcite-lines (ampprod)
-  (count-if (lambda (x) (member x '(he- pe-)))
-            (flatten ampprod)))
+  (count-tot-lines (lambda (x)
+                     (if (listp x)
+                         (member (symb-of x) '(he- pe-))
+                         (member x '(he- pe-))))
+                   ampprod))
 
 (defun gen-diagrams-w/o-index (n-lst)
   (flet ((d-ext-lines (op ampprod)
@@ -269,8 +287,99 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
+;;; two kinds of symmetry
+;;; * node symmetry: the symmetric open lines are connected to the same vertex
+;;; * diagram symmetry: the symmetric open lines are connected to the h2e operators
+
+(defun ext-line? (line)
+  (member line '(pe+ he+ he- pe-)))
+(defun int-line? (line)
+  (and (listp line)
+       (member (symb-of line) '(pi+ hi+ hi- pi-))))
+    
+;;; symmetric nodes can exist in t3, t4, ...
+(defun node-symm? (amp)
+  (when (> (length (content-of amp)) 2)
+    (count-if (lambda (node)
+                (and (ext-line? (first node)) (ext-line? (second node))))
+              (content-of amp))))
+
+(defun diagram-symm (ampprod)
+  (let ((op (first ampprod))
+        (rest-amps (cdr ampprod)))
+    (when (symmetric-op? op)
+      ; swap 12 <-> 34, compare the ampprod-id
+      (let ((swapped (replace-ampprod-index '((1 . 3) (2 . 4) (3 . 1) (4 . 2))
+                                            rest-amps)))
+        (when (equal (id-of-ampprod swapped)
+                     (id-of-ampprod rest-amps))
+          (not
+           ; in case the op (----) fully contract with one vertex: O_O_V_V_...
+           ; when op connect to two vertexes, it would be symmetry of
+           ; two vertexes instead of open lines
+           (and (equal (symb-id-of-amp op)
+                       (symb-id-of-amp '(g ((hi- 1) (pi- 2)) ((hi- 3) (pi- 4)))))
+                (eql (length rest-amps) 1)
+                (eql 2 (count (symb-id-of-node '((pi+ 2) (hi+ 1)))
+                              (content-of (car rest-amps))
+                              :key #'symb-id-of-node)))))))))
+
+; a general algorithm should start from line in h1e/h2e op, count the closed loops
+(defun count-inner-loops (ampprod)
+  (let ((op (first ampprod))
+        (rest-amps (cdr ampprod)))
+    (flet ((find-node-fn (node-patten)
+             (lambda (amp)
+               (find (id-of-node node-patten) (content-of amp)
+                     :key #'id-of-node :test #'equal))))
+      (cond ((member (symb-id-of-amp op)
+                     (mapcar #'symb-id-of-amp
+                             '((f ((hi- 1) (pi- 2)))
+                               (g ((hi- 1) (pi- 2)) ((pi+ 3) (hi+ 4)))
+                               (g ((hi- 1) (pi- 2)) ((hi- 3) (hi+ 4)))
+                               (g ((hi- 1) (pi- 2)) ((pi+ 3) (pi- 4)))))
+                     :test #'equal)                       
+             (if (find-if (find-node-fn '((pi+ 2) (hi+ 1))) rest-amps)
+                 1
+                 0))
+            ((equal (symb-id-of-amp op)
+                    (symb-id-of-amp '(g ((hi- 1) (pi- 2)) ((hi- 3) (pi- 4)))))
+             (let ((o21 (find-if (find-node-fn '((pi+ 2) (hi+ 1))) rest-amps))
+                   (o43 (find-if (find-node-fn '((pi+ 4) (hi+ 3))) rest-amps)))
+               (cond ((and o21 o43) 2)
+                     ((or o21 o43) 1)
+                     ((and (find-if (find-node-fn '((pi+ 4) (hi+ 1))) rest-amps)
+                           (find-if (find-node-fn '((pi+ 2) (hi+ 3))) rest-amps))
+                      1)
+                     (t 0))))
+          (t 0)))))
+;(defun count-external-loops (ampprod)
+;  (count-tot-lines (lambda (rline)
+;                     (eql (symb-of rline) 'he+))
+;                   ampprod))
+;(defun count-hole-lines (ampprod)
+;  (count-tot-lines (lambda (rline)
+;                     (member (symb-of rline) '(he- he+ hi- hi+)))
+;                   ampprod))
+;(defun hole-loop-sign (ampprod)
+;  (if (evenp (+ (count-hole-lines ampprod)
+;                (count-loops ampprod)))
+;      1
+;      -1))
+    
+;;; add factor 2 for inner loop, 1/2 for symmetric external line pair,
+;;; 1/3!, 1/4!, ... for equivalent external pairs in t4, t5, ...
+(defun add-ampprod-factor (ampprod)
+  (let* ((node-fac (node-symm? ampprod))
+         (loop-fac (count-inner-loops ampprod))
+         (factor (* (if (diagram-symm? ampprod) .5 1)
+                    (if node-fac (expt .5 node-fac) 1)
+                    (expt 2 loop-fac))))
+    (cons factor ampprod)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
 ;;; adding indices
-;;; e.g. assign 2 to internal hole line (hi+ . 2)
 ;;;
 
 ;; return nil if not replaced
@@ -392,19 +501,12 @@
 ;                     finds))))
 ;      (searching rline))))
 ;
-;(defun count-loops (ampprod)
-;  (count-tot-lines (lambda (rline)
-;                     (eql (symb-of rline) 'he+))
-;                   ampprod))
-;(defun count-hole-lines (ampprod)
-;  (count-tot-lines (lambda (rline)
-;                     (member (symb-of rline) '(he- he+ hi- hi+)))
-;                   ampprod))
-;(defun hole-loop-sign (ampprod)
-;  (if (evenp (+ (count-hole-lines ampprod)
-;                (count-loops ampprod)))
-;      1
-;      -1))
+;
+;
+;
+;
+;
+;
 ;
 ;(defun collect-ext-holes (ampprod)
 ;  (remove-if-not #'identity

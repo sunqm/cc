@@ -323,6 +323,7 @@
       (searching rline))))
 
 (defun count-loops (ampprod)
+  ;;; fixme: + inner loops
   (count-tot-lines (lambda (rline)
                      (eql (symb-of-rline rline) 'he+))
                    ampprod))

@@ -1,11 +1,13 @@
 ;;; -*- Mode: Common-Lisp; -*-
 
 (defmacro pass? (test value)
-  `(format t "~a  ~:[FAIL~;pass~]~%" ',test (equal ,test ,value)))
+  `(let ((tf (equal ,test ,value)))
+     (format t "~a  ~:[FAIL~;pass~]~%" ',test tf)
+     tf))
 
-(find-most-n-common-term 1 '((517 903) (519 901)))
+(find-most-common-labels 1 '((517 903) (519 901)))
 
-(find-most-n-common-term 3 '((* (509) (6 16) (519 1000))
+(find-most-common-labels 3 '((* (509) (6 16) (519 1000))
                              (* (509) (6 16) (616 903))
                              (* (517) (6 16) (511 1000))
                              (* (901) (6 16) (511 616))
@@ -40,3 +42,29 @@
            (* (901) (6 16) (519 608))
            (* (608) (6 16) (517 903))
            (* (608) (6 16) (519 901))))
+
+(pass? (cut-op-from-amp '(g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2)))
+                        '(t (pe+ (hi+ 1)) ((pi+ 2) he+)))
+       '(t (pe+ (he+ 1)) ((pe+ 2) he+)))
+(pass? (cut-op-from-amp '(t (pe+ (hi+ 1)) ((pi+ 2) he+))
+                        '(g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2))))
+       '(g ((he- 1) (pi- 1)) ((hi- 2) (pe- 2))))
+
+(pass? (multiple-value-list
+        (subgroup-ampprods '(t ((pi+ 1) (hi+ 1)) (pe+ he+))
+                           '(((g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2)))
+                              (t ((pi+ 1) (hi+ 1)) (pe+ (hi+ 2)))
+                              (t ((pi+ 2) he+) (pe+ he+)))
+                             ((g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2)))
+                              (t ((pi+ 1) (hi+ 1)) (pe+ he+))
+                              (t ((pi+ 2) (hi+ 2)) (pe+ he+)))
+                             ((g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2)))
+                              (t ((pi+ 1) (hi+ 1)) (pe+ he+))
+                              (t (pe+ (hi+ 2)) ((pi+ 2) he+))))))
+       '(nil
+         (((g ((he- 1) (pe- 1)) ((hi- 2) (pi- 2))) (t ((pi+ 2) (hi+ 2)) (pe+ he+)))
+          ((g ((he- 1) (pe- 1)) ((hi- 2) (pi- 2))) (t (pe+ (hi+ 2)) ((pi+ 2) he+))))
+         (((g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2))) (t ((pi+ 1) (hi+ 1)) (pe+ (hi+ 2)))
+           (t ((pi+ 2) he+) (pe+ he+))))))
+
+;(mapcar #'regroup-amp-iter (gen&group-diagrams-w/o-index '(1 2)))

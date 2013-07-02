@@ -204,6 +204,7 @@
                       (funcall f a1 a2))
                     l2))
             l1))
+; (mapnest #'+ '(10 20) '(1 2)) => (11 12 21 22)
 
 (defun mapcaar (fn lsts)
   (mapcar (lambda (lst) (mapcar fn lst)) lsts))

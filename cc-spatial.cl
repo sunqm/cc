@@ -32,6 +32,31 @@
   (car line))
 (defun index-of (line)
   (cadr line))
+(defun line-indexed? (line)
+  (listp line))
+
+(defun external-line? (line)
+  (member line '(pe+ he+ he- pe-)))
+(defun internal-line? (line)
+  (and (line-indexed? line)
+       (member (symb-of line) '(pi+ hi+ hi- pi-))))
+
+(defun toggle-line-symb (mapping line)
+  (flet ((get-new-symb (line)
+           (cdr (assoc (symb-of line) mapping))))
+    (if (line-indexed? line)
+        (make-line (get-new-symb line) (index-of line))
+        (get-new-symb line))))
+
+(defun toggle-line-int<->ext (line)
+  (toggle-line-symb (pairlis '(hi- pi- hi+ pi+ he- pe- he+ pe+)
+                             '(he- pe- he+ pe+ hi- pi- hi+ pi+))
+                    line))
+
+(defun toggle-line-excite<->dexcite (line)
+  (toggle-line-symb (pairlis '(hi+ pi+ he+ pe+ hi- pi- he- pe-)
+                             '(hi- pi- he- pe- hi+ pi+ he+ pe+))
+                    line))
 
 ;;; a node contains an "in" and an "out" lines
 (defun make-node (l-out l-in)
@@ -41,21 +66,21 @@
 (defun in-line-of (node) (cadr node))
 
 (defparameter *h2e-ops*
-  '(;(g ((pe+ 1) (he+ 2)) ((pe+ 3) (he+ 4)))
-    (g ((he- 1) (he+ 2)) ((pe+ 3) (he+ 4)))
-    (g ((pe+ 1) (pe- 2)) ((pe+ 3) (he+ 4)))
-    (g ((he- 1) (he+ 2)) ((he- 3) (he+ 4)))
-    (g ((pe+ 1) (pe- 2)) ((pe+ 3) (pe- 4)))
-    (g ((he- 1) (he+ 2)) ((pe+ 3) (pe- 4)))
-    (g ((he- 1) (pe- 2)) ((pe+ 3) (he+ 4)))
-    (g ((he- 1) (pe- 2)) ((he- 3) (he+ 4)))
-    (g ((he- 1) (pe- 2)) ((pe+ 3) (pe- 4)))
-    (g ((he- 1) (pe- 2)) ((he- 3) (pe- 4)))))
+  '(;(g ((pe+ 1) (he+ 1)) ((pe+ 2) (he+ 2)))
+    (g ((he- 1) (he+ 1)) ((pe+ 2) (he+ 2)))
+    (g ((pe+ 1) (pe- 1)) ((pe+ 2) (he+ 2)))
+    (g ((he- 1) (he+ 1)) ((he- 2) (he+ 2)))
+    (g ((pe+ 1) (pe- 1)) ((pe+ 2) (pe- 2)))
+    (g ((he- 1) (he+ 1)) ((pe+ 2) (pe- 2)))
+    (g ((he- 1) (pe- 1)) ((pe+ 2) (he+ 2)))
+    (g ((he- 1) (pe- 1)) ((he- 2) (he+ 2)))
+    (g ((he- 1) (pe- 1)) ((pe+ 2) (pe- 2)))
+    (g ((he- 1) (pe- 1)) ((he- 2) (pe- 2)))))
 (defparameter *h1e-h2e*
-  (append '((f ((he- 1) (he+ 2)))
-            (f ((pe+ 1) (pe- 2)))
-            (f ((he- 1) (pe- 2)))
-            (f ((pe+ 1) (he+ 2))))
+  (append '((f ((he- 1) (he+ 1)))
+            (f ((pe+ 1) (pe- 1)))
+            (f ((he- 1) (pe- 1)))
+            (f ((pe+ 1) (he+ 1))))
           *h2e-ops*))
 
 (defun op-copy (n op)
@@ -69,6 +94,9 @@
   (attach-tag 't (op-copy n (make-node 'pe+ 'he+))))
 ; t1 = (t (he+ pe+))
 ; t2 = (t (he+ pe+) (he+  pe+))
+
+(defun num-nodes-in-amp (amp)
+  (length (content-of amp)))
                          
 ;;; contraction of one hole and an amplitude
 (defun contract-hole-amp (idx amp)
@@ -147,10 +175,10 @@
         ((pe+ he+) 2)
         ((pe- he-) 3))))
 (defun index-id-of-line (line)
-  (cond ((atom line) 0)
-        ((member (symb-of line) '(hi+ pi+ hi- pi-))
-         (index-of line))
-        (t 0)))
+  (if (internal-line? line)
+      (index-of line)
+      0))
+
   ;; valide node id can be
   ;; (hi- pi-) == 0 ; (hi- hi+) == 1 ; (hi- he+) == 2 ; (hi- pe-) __ 3 ;
   ;; (pi+ pi-) == 4 ; (pi+ hi+) == 5 ; (pi+ he+) == 6 ; (pi+ pe-) __ 7 ;
@@ -186,29 +214,31 @@
                 (list<= id1 id2)
                 (< len1 len2))))))
 
-;;; rep-tab is a pair-list which stores the mapping of indices
-(defun replace-ampprod-index (rep-tab ampprod)
-  (flet ((replace-line (line)
-           (if (listp line)
-               (let ((k-v (assoc (index-of line) rep-tab)))
-                 (if k-v
-                     (make-line (symb-of line) (cdr k-v))
-                     line))
-               line))
-    (mapcar (lambda (amp)
-              (cons (tag-of amp)
-                    (mapcaar #'replace-line (content-of amp))))
-            ampprod)))
+;;; mapping is a pair-list which stores the mapping of indices
+(defun replace-line-index (pred mapping line)
+  (if (funcall pred line)
+      (let ((k-v (assoc (index-of line) mapping)))
+        (if k-v
+            (make-line (symb-of line) (cdr k-v))
+            line))
+      line))
+(defun replace-amp-index (pred mapping amp)
+  (cons (tag-of amp)
+        (mapcaar (lambda (line)
+                   (replace-line-index pred mapping line))
+                 (content-of amp))))
+(defun swap-ampprod-e1<->e2 (ampprod)
+  (mapcar (lambda (amp)
+            (replace-amp-index #'line-indexed? '((1 . 2) (2 . 1)) amp))
+          ampprod))
+
 ;;; 
 (defun remove-symm-eq-ampprod (ampprod-lst)
-  (flet ((swap-e12 (ampprod)
-           (replace-ampprod-index '((1 . 3) (2 . 4) (3 . 1) (4 . 2))
-                                  ampprod)))
-    (remove-duplicates ampprod-lst
-                       :test (lambda (a1 a2)
-                               (equal (id-of-ampprod a1)
-                                      (id-of-ampprod (swap-e12 a2))))
-                       :from-end t)))
+  (remove-duplicates ampprod-lst
+                     :test (lambda (a1 a2)
+                             (equal (id-of-ampprod a1)
+                                    (id-of-ampprod (swap-ampprod-e1<->e2 a2))))
+                     :from-end t))
 
 (defun symmetric-op? (op)
   (let ((nodes (content-of op)))
@@ -262,13 +292,13 @@
                      ampprod)))
 (defun count-excite-lines (ampprod)
   (count-tot-lines (lambda (x)
-                     (if (listp x)
+                     (if (line-indexed? x)
                          (member (symb-of x) '(he+ pe+))
                          (member x '(he+ pe+))))
                    ampprod))
 (defun count-dexcite-lines (ampprod)
   (count-tot-lines (lambda (x)
-                     (if (listp x)
+                     (if (line-indexed? x)
                          (member (symb-of x) '(he- pe-))
                          (member x '(he- pe-))))
                    ampprod))
@@ -285,32 +315,42 @@
                         *h1e-h2e*))
               (gen-amps-list n-lst)))))
 
+(defun gen&group-diagrams-w/o-index (n-lst)
+  (flet ((d-ext-lines (op ampprod)
+           (let* ((n-dexcite (count-dexcite-lines (list op)))
+                  (n-excite (+ (- (* 2 (num-nodes-in-amp op)) n-dexcite)
+                               (* 2 (apply #'+ (mapcar #'num-nodes-in-amp ampprod))))))
+             (- n-excite n-dexcite))))
+    (let ((avail-exts (mapcar (lambda (x) (+ x x)) n-lst)))
+      (mapcar (lambda (n-exts)
+                (mapcan (lambda (ampprod)
+                          (mapcan (lambda (op)
+                                    (if (eql (d-ext-lines op ampprod) n-exts)
+                                        (contract-h2e-ampprod op ampprod)))
+                                  *h1e-h2e*))
+                        (gen-amps-list n-lst)))
+              avail-exts))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; two kinds of symmetry
 ;;; * node symmetry: the symmetric open lines are connected to the same vertex
 ;;; * diagram symmetry: the symmetric open lines are connected to the h2e operators
-
-(defun ext-line? (line)
-  (member line '(pe+ he+ he- pe-)))
-(defun int-line? (line)
-  (and (listp line)
-       (member (symb-of line) '(pi+ hi+ hi- pi-))))
     
 ;;; symmetric nodes can exist in t3, t4, ...
 (defun node-symm? (amp)
-  (when (> (length (content-of amp)) 2)
+  (when (> (num-nodes-in-amp amp) 2)
     (count-if (lambda (node)
-                (and (ext-line? (first node)) (ext-line? (second node))))
+                (and (external-line? (first node))
+                     (external-line? (second node))))
               (content-of amp))))
 
-(defun diagram-symm (ampprod)
+(defun diagram-symm? (ampprod)
   (let ((op (first ampprod))
         (rest-amps (cdr ampprod)))
     (when (symmetric-op? op)
       ; swap 12 <-> 34, compare the ampprod-id
-      (let ((swapped (replace-ampprod-index '((1 . 3) (2 . 4) (3 . 1) (4 . 2))
-                                            rest-amps)))
+      (let ((swapped (swap-ampprod-e1<->e2 rest-amps)))
         (when (equal (id-of-ampprod swapped)
                      (id-of-ampprod rest-amps))
           (not
@@ -318,9 +358,9 @@
            ; when op connect to two vertexes, it would be symmetry of
            ; two vertexes instead of open lines
            (and (equal (symb-id-of-amp op)
-                       (symb-id-of-amp '(g ((hi- 1) (pi- 2)) ((hi- 3) (pi- 4)))))
+                       (symb-id-of-amp '(g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2)))))
                 (eql (length rest-amps) 1)
-                (eql 2 (count (symb-id-of-node '((pi+ 2) (hi+ 1)))
+                (eql 2 (count (symb-id-of-node '((pi+ 1) (hi+ 1)))
                               (content-of (car rest-amps))
                               :key #'symb-id-of-node)))))))))
 
@@ -334,22 +374,22 @@
                      :key #'id-of-node :test #'equal))))
       (cond ((member (symb-id-of-amp op)
                      (mapcar #'symb-id-of-amp
-                             '((f ((hi- 1) (pi- 2)))
-                               (g ((hi- 1) (pi- 2)) ((pi+ 3) (hi+ 4)))
-                               (g ((hi- 1) (pi- 2)) ((hi- 3) (hi+ 4)))
-                               (g ((hi- 1) (pi- 2)) ((pi+ 3) (pi- 4)))))
+                             '((f ((hi- 1) (pi- 1)))
+                               (g ((hi- 1) (pi- 1)) ((pi+ 2) (hi+ 2)))
+                               (g ((hi- 1) (pi- 1)) ((hi- 2) (hi+ 2)))
+                               (g ((hi- 1) (pi- 1)) ((pi+ 2) (pi- 2)))))
                      :test #'equal)                       
-             (if (find-if (find-node-fn '((pi+ 2) (hi+ 1))) rest-amps)
+             (if (find-if (find-node-fn '((pi+ 1) (hi+ 1))) rest-amps)
                  1
                  0))
             ((equal (symb-id-of-amp op)
-                    (symb-id-of-amp '(g ((hi- 1) (pi- 2)) ((hi- 3) (pi- 4)))))
-             (let ((o21 (find-if (find-node-fn '((pi+ 2) (hi+ 1))) rest-amps))
-                   (o43 (find-if (find-node-fn '((pi+ 4) (hi+ 3))) rest-amps)))
-               (cond ((and o21 o43) 2)
-                     ((or o21 o43) 1)
-                     ((and (find-if (find-node-fn '((pi+ 4) (hi+ 1))) rest-amps)
-                           (find-if (find-node-fn '((pi+ 2) (hi+ 3))) rest-amps))
+                    (symb-id-of-amp '(g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2)))))
+             (let ((o1 (find-if (find-node-fn '((pi+ 1) (hi+ 1))) rest-amps))
+                   (o2 (find-if (find-node-fn '((pi+ 2) (hi+ 2))) rest-amps)))
+               (cond ((and o1 o2) 2)
+                     ((or o1 o2) 1)
+                     ((and (find-if (find-node-fn '((pi+ 2) (hi+ 1))) rest-amps)
+                           (find-if (find-node-fn '((pi+ 1) (hi+ 2))) rest-amps))
                       1)
                      (t 0))))
           (t 0)))))

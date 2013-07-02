@@ -30,19 +30,17 @@
              (count-if (lambda (prod) (member (funcall fn-term-id obj)
                                               prod :test #'equal))
                        (mapcaar fn-term-id lst-prod)))
-           (term-id-eql (term1 term2)
-             (equal (funcall fn-term-id term1)
-                    (funcall fn-term-id term2)))
            ;; find unique terms which are reasonable for regrouping.
            (find-uniq-term (filter)
              (remove-duplicates (apply #'append (mapcar filter lst-prod))
-                                :test #'term-id-eql))
-           (keep-prod-with (keys)
+                                :key fn-term-id :test #'equal))
+           (keep-prod-which-has (keys)
              (lambda (prod)
                (let ((keys-id (mapcar fn-term-id keys))
                      (prod-id (mapcar fn-term-id prod)))
-                 (if (subsetp keys-id prod-id)
-                     (remove-if (lambda (x) (member x keys :test #'term-id-eql))
+                 (if (subsetp keys-id prod-id :test #'equal)
+                     (remove-if (lambda (x) (member (funcall fn-term-id x) keys
+                                                    :key fn-term-id :test #'equal))
                                 prod)))))
            (build-match-list (obj count matches)
              (if (or (eql count 1) (null obj))
@@ -57,7 +55,7 @@
                    (if (null matches)
                        '()
                        (let* ((keys (mapcar #'second matches))
-                              (objs (find-uniq-term (keep-prod-with keys))))
+                              (objs (find-uniq-term (keep-prod-which-has keys))))
                          (if objs
                              (multiple-value-bind (obj count) (most #'count-obj objs)
                                (build-match-list obj count matches))
@@ -112,87 +110,86 @@
           (regroup-iter poly)))
 
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; define the filter function which considers memory usage
 ;;; It restricts the number of open lines
-(defparameter *avial-ext-lines* 4)
+(defparameter *max-ext-lines* 4)
 ; fixme: control the usage of memory
 (defun filter-for-tight-mem (ampprod)
   (flet ((ext-int-line (amp)
-           (let* ((n-int (count-if #'ext-line?
+           (let* ((n-int (count-if #'internal-line?
                                    (apply #'append (content-of amp))))
-                  (n-ext (- (* 2 (length (content-of amp))) n-int)))
+                  (n-ext (- (* 2 (num-nodes-in-amp amp)) n-int)))
              (values n-ext n-int))))
     (let ((tot-ext (apply #'+ (mapcar #'ext-int-line ampprod))))
       (remove-if (lambda (amp)
                    (multiple-value-bind (n-ext n-int) (ext-int-line amp)
-                     (> (+ (- tot-ext n-ext) n-int) *avial-ext-lines*)))
+                     ;(print (list tot-ext (+ (- tot-ext n-ext) n-int) amp))
+                     (> (+ (- tot-ext n-ext) n-int) *max-ext-lines*)))
                  ampprod))))
 
+(defun amp-id-with-e1<=>e2 (amp)
+  (let ((sid1 (id-of-amp amp))
+        (sid2 (id-of-amp (replace-amp-index
+                          #'line-indexed? '((1 . 2) (2 . 1))
+                          amp))))
+    (if (list<= sid1 sid2)
+        sid1
+        sid2)))
 (defun find-most-common-amp (n ampprod-lst)
-  (find-best-common-term n (mapcar #'filter-for-tight-mem ampprod-lst)
-                         #'symb-id-of-amp))
+    (find-best-common-term n (mapcar #'filter-for-tight-mem ampprod-lst)
+                         #'amp-id-with-e1<=>e2)))
 
-(defun line-int<->ext (line)
-  (flet ((switch-symb (symb)
-           (case symb
-             (hi- 'he-)
-             (pi- 'pe-)
-             (hi+ 'he+)
-             (pi+ 'pe+)
-             (he- 'hi-)
-             (pe- 'pi-)
-             (he+ 'hi+)
-             (pe+ 'pi+))))
-  (if (listp line)
-      (make-line (switch-symb (symb-of line)) (index-of line))
-      (switch-symb (symb-of line)))))
-      
-(defun replace-op-line (rep-tab op))
+(defun toggle-amp-line-int<->ext (amp line)
+  (cons (tag-of amp)
+        (mapcaar (lambda (l)
+                   (if (equal l line)
+                       (toggle-line-int<->ext l)
+                       l))
+                   (content-of amp))))
+(defun cut-op-from-amp (op amp)
+  (reduce (lambda (amp line)
+            (if (internal-line? line)
+                (let ((conn-line (toggle-line-excite<->dexcite line)))
+                  (toggle-amp-line-int<->ext amp conn-line))
+                amp))
+          (apply #'append (content-of op))
+          :initial-value amp))
+;;; if amp is a member of ampprod, remove amp and toggle the
+;;; internal/external line in ampprod
+(defun cut-amp-from-ampprod (amp ampprod)
+  (let ((subprod (remove (id-of-amp amp) ampprod
+                         :key #'id-of-amp :test #'equal :count 1)))
+    (mapcar (lambda (x) (cut-op-from-amp amp x))
+            subprod)))
+
 (defun subgroup-ampprods (term ampprod-lst)
-  (flet ((contain-obj (prod)
-           (member (symb-id-of-amp term) prod
-                   :key symb-id-of-amp :test #'equal))
+  (flet ((label-term-via (fn-id)
+           (lambda (prod)
+             (member (funcall fn-id term) prod
+                     :key fn-id :test #'equal)))
          (single-term? (prod)
-           (last-one? prod))
-        ;(extract-amp-idx (amp)
-        ;  (mapcan (lambda (node)
-        ;            (mapcar (lambda (line)
-        ;                      (if (listp line)
-        ;                          (index-of line)
-        ;                          (content-of amp)
-         (swap-index (ampprod) ; fixme: change line-symb
-           (let ((matched-term (find (sym-id-of-amp term) ampprod
-                                     :key symb-id-of-amp :test #'equal))
-                 (subprod (remove (symb-id-of-amp term) prod
-                                  :key #'symb-id-of-amp :test #'equal))
-                 (op-int->ext (replace-once (lambda (amp)
-                                              (if (member (tag-of amp) '(f g))
-                                                  ...)
-                                              subprod)
-                   ;(cons (tag-of op)
-                   ;      (mapcaar (lambda (line)
-                   ;                (if (find-anywhere (index-of line) matched-term)
-                   ;                    ; i -> e
-                   ;                    )
-                   ;              (content-of op))
-             (if (equal (id-of-amp term) (id-of-amp matched-term))
-                 subprod
-                 (replace-ampprod-index '((1 . 3) (2 . 4) (3 . 1) (4 . 2))
-                                        subprod)))))
-    (let* ((set1 (remove-if-not #'contain-obj ampprod-lst))
-           (set-rest (remove-if #'contain-obj ampprod-lst))
-           (sub-set1 (mapcar (lambda (prod)
-                               (remove (symb-id-of-amp term) prod
-                                       :key #'symb-id-of-amp :test #'equal))
-                             set1))
-           (singles (mapcar #'car (remove-if-not #'single-term? sub-set1)))
-           (multi-s (remove-if #'single-term? sub-set1)))
+           (last-one? prod)))
+    (let* ((set1 (remove-if-not (label-term-via #'amp-id-with-e1<=>e2) ampprod-lst))
+           (set-rest (remove-if (label-term-via #'amp-id-with-e1<=>e2) ampprod-lst))
+           (sub1 (remove-if-not (label-term-via #'id-of-amp) set1))
+           (sub2 (mapcar #'swap-ampprod-e1<->e2
+                         (remove-if (label-term-via #'id-of-amp) set1)))
+           (cut-set1 (mapcar (lambda (ampprod)
+                               (cut-amp-from-ampprod term ampprod))
+                             (append sub2 sub1)))
+           (singles (mapcar #'car (remove-if-not #'single-term? cut-set1)))
+           (multi-s (remove-if #'single-term? cut-set1)))
       (values singles multi-s set-rest))))
 
 (defun regroup-amp-iter (poly)
   (cond ((null poly) (list '()))
-        ((last-one? poly) (list poly))
+        ((last-one? poly)
+         (list `(,(cons '* (car poly)))))
         (t (flet ((expand (term)
                     (multiple-value-bind (singles multi-s set-rest)
                         (subgroup-ampprods term poly)
@@ -205,10 +202,10 @@
              (let ((commons (find-most-common-amp
                              *common-term-search-trial* poly)))
                (if (null commons)
-                   (mapcar (lambda (x) (cons '* x)) poly)
+                   (list (mapcar (lambda (x) (cons '* x)) poly))
                    (mapcan (lambda (common-term) (expand (cadr common-term)))
                            commons)))))))
-; determine whether swap ij only, swap ab only
+
 
 
 

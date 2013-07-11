@@ -142,7 +142,7 @@
         sid2)))
 (defun find-most-common-amp (n ampprod-lst)
     (find-best-common-term n (mapcar #'filter-for-tight-mem ampprod-lst)
-                         #'amp-id-with-e1<=>e2)))
+                         #'amp-id-with-e1<=>e2))
 
 (defun toggle-amp-line-int<->ext (amp line)
   (cons (tag-of amp)

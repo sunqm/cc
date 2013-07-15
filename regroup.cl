@@ -35,6 +35,7 @@
              (remove-duplicates (apply #'append (mapcar filter lst-prod))
                                 :key fn-term-id :test #'equal))
            (keep-prod-which-has (keys)
+             ; in case the terms are mutually excluded
              (lambda (prod)
                (let ((keys-id (mapcar fn-term-id keys))
                      (prod-id (mapcar fn-term-id prod)))
@@ -133,10 +134,10 @@
                  ampprod))))
 
 (defun amp-id-with-e1<=>e2 (amp)
-  (let ((sid1 (id-of-amp amp))
-        (sid2 (id-of-amp (replace-amp-index
-                          #'line-indexed? '((1 . 2) (2 . 1))
-                          amp))))
+  (let ((sid1 (funcall (amp-id-fn #'id-of-node) amp))
+        (sid2 (funcall (amp-id-fn #'id-of-node)
+                       (replace-amp-index #'line-indexed? '((1 . 2) (2 . 1))
+                                          amp))))
     (if (list<= sid1 sid2)
         sid1
         sid2)))
@@ -162,23 +163,25 @@
 ;;; if amp is a member of ampprod, remove amp and toggle the
 ;;; internal/external line in ampprod
 (defun cut-amp-from-ampprod (amp ampprod)
-  (let ((subprod (remove (id-of-amp amp) ampprod
-                         :key #'id-of-amp :test #'equal :count 1)))
+  (let ((subprod (remove (funcall (amp-id-fn #'id-of-node) amp)
+                         ampprod
+                         :key (amp-id-fn #'id-of-node)
+                         :test #'equal :count 1)))
     (mapcar (lambda (x) (cut-op-from-amp amp x))
             subprod)))
 
 (defun subgroup-ampprods (term ampprod-lst)
-  (flet ((label-term-via (fn-id)
+  (flet ((label-term-via (id-fn)
            (lambda (prod)
-             (member (funcall fn-id term) prod
-                     :key fn-id :test #'equal)))
+             (member (funcall id-fn term) prod
+                     :key id-fn :test #'equal)))
          (single-term? (prod)
            (last-one? prod)))
     (let* ((set1 (remove-if-not (label-term-via #'amp-id-with-e1<=>e2) ampprod-lst))
            (set-rest (remove-if (label-term-via #'amp-id-with-e1<=>e2) ampprod-lst))
-           (sub1 (remove-if-not (label-term-via #'id-of-amp) set1))
+           (sub1 (remove-if-not (label-term-via (amp-id-fn #'id-of-node)) set1))
            (sub2 (mapcar #'swap-ampprod-e1<->e2
-                         (remove-if (label-term-via #'id-of-amp) set1)))
+                         (remove-if (label-term-via (amp-id-fn #'id-of-node)) set1)))
            (cut-set1 (mapcar (lambda (ampprod)
                                (cut-amp-from-ampprod term ampprod))
                              (append sub2 sub1)))

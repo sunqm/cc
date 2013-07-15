@@ -209,6 +209,12 @@
 (defun mapcaar (fn lsts)
   (mapcar (lambda (lst) (mapcar fn lst)) lsts))
 
+(defun mapcaaar (fn lsts)
+  (mapcar (lambda (lst)
+            (mapcar (lambda (item)
+                      (mapcar fn item)) lst))
+          lsts))
+
 ;;;;;;;;;;;;;;;;;
 (defun mapreplace (fn lst)
   (if (null lst)

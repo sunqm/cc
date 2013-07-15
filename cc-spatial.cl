@@ -423,8 +423,9 @@
              (if (find-if (find-node-fn '((pi+ 1) (hi+ 1))) rest-amps)
                  1
                  0))
-            ((equal (symb-id-of-amp op)
-                    (symb-id-of-amp '(g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2)))))
+            ((equal (funcall (amp-id-fn #'symb-id-of-node) op)
+                    (funcall (amp-id-fn #'symb-id-of-node)
+                             '(g ((hi- 1) (pi- 1)) ((hi- 2) (pi- 2)))))
              (let ((o1 (find-if (find-node-fn '((pi+ 1) (hi+ 1))) rest-amps))
                    (o2 (find-if (find-node-fn '((pi+ 2) (hi+ 2))) rest-amps)))
                (cond ((and o1 o2) 2)
